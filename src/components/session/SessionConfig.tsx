@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { BookOpen, X } from 'lucide-react'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useAppStore } from '../../stores/appStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 import { Input, Select } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
@@ -22,7 +23,16 @@ export function SessionConfig() {
   const { config, updateConfig, startSession } = useSessionStore()
   const sessions = useAppStore((s) => s.sessions)
   const showToast = useAppStore((s) => s.showToast)
+  const defaultCriterion = useSettingsStore((s) => s.defaultCriterion)
   const [libOpen, setLibOpen] = useState(false)
+
+  // Aplica o critério padrão das Configurações em sessões novas (ainda sem programa)
+  useEffect(() => {
+    if (!config.program && config.criterion !== defaultCriterion) {
+      updateConfig({ criterion: defaultCriterion })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const ct = config.collectionType
   const showDtt = ct === 'dtt'

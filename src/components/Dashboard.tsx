@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Users, TrendingUp, Award, AlertTriangle, CheckCircle2, CalendarDays, RefreshCw, Globe } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { computeStatus, computeStreak, rateColor } from '../lib/aba'
 import type { Session } from '../types'
 
@@ -10,7 +11,8 @@ interface Props { onNavigate: (tab: string) => void }
 
 export function Dashboard({ onNavigate }: Props) {
   const { sessions, profile } = useAppStore()
-  const isSupervisor = profile?.role === 'bcba'
+  const supervisionEnabled = useSettingsStore((s) => s.supervisionEnabled)
+  const isSupervisor = supervisionEnabled && profile?.role === 'bcba'
 
   const data = useMemo(() => {
     const students = [...new Set(sessions.map(s => s.student))]

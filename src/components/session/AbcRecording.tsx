@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useAppStore } from '../../stores/appStore'
+import { haptic } from '../../lib/haptic'
 import { TextArea } from '../ui/Input'
 import type { AbcEntry } from '../../types'
 
@@ -13,7 +14,7 @@ export function AbcRecording() {
     if (!form.antecedente && !form.comportamento) { showToast('Preencha ao menos A ou B', 'warning'); return }
     addAbc(form)
     setForm({ antecedente: '', comportamento: '', consequencia: '', intensidade: 'Moderada' })
-    if (navigator.vibrate) navigator.vibrate(25)
+    haptic(25)
   }
 
   return (

@@ -9,6 +9,7 @@ import { SessionPage } from './pages/SessionPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { ReportPage } from './pages/ReportPage'
 import { GuidePage } from './pages/GuidePage'
+import { SettingsPage } from './pages/SettingsPage'
 import { Header } from './components/layout/Header'
 import { BottomNav } from './components/layout/BottomNav'
 import { Toast } from './components/ui/Toast'
@@ -52,6 +53,7 @@ export default function App() {
     history:  <HistoryPage />,
     report:   <ReportPage />,
     guide:    <GuidePage />,
+    settings: <SettingsPage onNavigate={setTab} />,
   }
 
   return (

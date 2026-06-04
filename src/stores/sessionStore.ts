@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { haptic } from '../lib/haptic'
 import type { ActiveSession, TrialEntry, DurEntry, AbcEntry, TrialType, Phase, PromptMode, CollectionType, IntervalKind } from '../types'
 
 const DRAFT_KEY = 'aba_draft_v1'
@@ -161,6 +162,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (log.length >= active.plannedTrials) return
     const newLog = [...log, { type: type as TrialType, score: SCORE[type] ?? 0 }]
     set({ log: newLog })
+    haptic(25)
     persistDraft(get())
     if (newLog.length >= active.plannedTrials) {
       setTimeout(() => get().finishSession(), 350)
@@ -201,7 +203,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
     // Intervalo encerrado → avança
     const next = intervalCurrent + 1
-    if (navigator.vibrate) navigator.vibrate(60)
+    haptic(60)
     if (next >= (active.intervalCount ?? intervalMarks.length)) {
       set({ intervalRunning: false, intervalStart: null, intervalRemaining: 0 })
       persistDraft(get())

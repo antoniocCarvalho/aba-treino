@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import { LogOut, ChevronDown, ClipboardList, UserCog, HelpCircle } from 'lucide-react'
+import { LogOut, ChevronDown, ClipboardList, Settings, HelpCircle } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useSessionStore } from '../../stores/sessionStore'
-import { SettingsModal } from '../SettingsModal'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 export function Header({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const { user, profile, logout } = useAppStore()
   const active = useSessionStore((s) => s.active)
+  const supervisionEnabled = useSettingsStore((s) => s.supervisionEnabled)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const initial = (profile?.full_name || user?.email || '?').charAt(0).toUpperCase()
   const roleLabel = profile?.role === 'rbt' ? 'Técnico (RBT)' : 'Supervisor (BCBA)'
@@ -51,19 +51,19 @@ export function Header({ onNavigate }: { onNavigate?: (tab: string) => void }) {
                     <p className="text-sm font-semibold text-slate-800">{profile?.full_name || 'Psicólogo'}</p>
                     <p className="text-xs text-slate-400">{user?.email}</p>
                     {profile?.crp && <p className="text-xs text-slate-400 mt-0.5">CRP {profile.crp}</p>}
-                    <span className="inline-block mt-1.5 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{roleLabel}</span>
+                    {supervisionEnabled && <span className="inline-block mt-1.5 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{roleLabel}</span>}
                   </div>
+                  <button
+                    onClick={() => { setMenuOpen(false); onNavigate?.('settings') }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <Settings size={14} /> Configurações
+                  </button>
                   <button
                     onClick={() => { setMenuOpen(false); onNavigate?.('guide') }}
                     className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                   >
                     <HelpCircle size={14} /> Guia do profissional
-                  </button>
-                  <button
-                    onClick={() => { setMenuOpen(false); setSettingsOpen(true) }}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                  >
-                    <UserCog size={14} /> Supervisão
                   </button>
                   <button
                     onClick={() => { setMenuOpen(false); logout() }}
@@ -77,7 +77,6 @@ export function Header({ onNavigate }: { onNavigate?: (tab: string) => void }) {
           </div>
         </div>
       </div>
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </header>
   )
 }

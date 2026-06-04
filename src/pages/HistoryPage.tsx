@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { Trash2, Pencil, Check, X, CheckCircle2, Users, CloudOff } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { supabase } from '../lib/supabase'
 import { dequeue } from '../lib/offline'
 import { movingAverage, rateColor, PHASE_LABEL, formatDuration } from '../lib/aba'
@@ -17,7 +18,8 @@ export function HistoryPage() {
   const [reviewing, setReviewing] = useState<string | null>(null)
   const [reviewDraft, setReviewDraft] = useState('')
   const [onlyPending, setOnlyPending] = useState(false)
-  const isSupervisor = profile?.role === 'bcba'
+  const supervisionEnabled = useSettingsStore((s) => s.supervisionEnabled)
+  const isSupervisor = supervisionEnabled && profile?.role === 'bcba'
 
   const students = useMemo(() => [...new Set(sessions.map(s => s.student))].sort(), [sessions])
   const programs = useMemo(() => {
@@ -159,10 +161,10 @@ export function HistoryPage() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-sm font-bold text-slate-800 truncate">{s.student}</p>
                       <Badge color="indigo">{PHASE_LABEL[s.phase] ?? 'Aquisição'}</Badge>
-                      {s._psychologistId && user && s._psychologistId !== user.id && (
+                      {supervisionEnabled && s._psychologistId && user && s._psychologistId !== user.id && (
                         <Badge color="gray"><Users size={10} className="inline mr-0.5" />Equipe</Badge>
                       )}
-                      {s.reviewedAt && (
+                      {supervisionEnabled && s.reviewedAt && (
                         <Badge color="green"><CheckCircle2 size={10} className="inline mr-0.5" />Revisado</Badge>
                       )}
                       {s._pending && (
