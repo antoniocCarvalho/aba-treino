@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { WifiOff } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import { useAppStore } from './stores/appStore'
@@ -6,10 +6,11 @@ import { useOnline } from './hooks/useOnline'
 import { AuthPage } from './pages/AuthPage'
 import { PatientsPage } from './pages/PatientsPage'
 import { SessionPage } from './pages/SessionPage'
-import { HistoryPage } from './pages/HistoryPage'
-import { ReportPage } from './pages/ReportPage'
-import { GuidePage } from './pages/GuidePage'
-import { SettingsPage } from './pages/SettingsPage'
+// Páginas pesadas (gráficos) carregadas sob demanda → bundle inicial menor
+const HistoryPage = lazy(() => import('./pages/HistoryPage').then(m => ({ default: m.HistoryPage })))
+const ReportPage = lazy(() => import('./pages/ReportPage').then(m => ({ default: m.ReportPage })))
+const GuidePage = lazy(() => import('./pages/GuidePage').then(m => ({ default: m.GuidePage })))
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 import { Header } from './components/layout/Header'
 import { BottomNav } from './components/layout/BottomNav'
 import { Toast } from './components/ui/Toast'
@@ -74,7 +75,9 @@ export default function App() {
       <main className={`max-w-2xl mx-auto px-4 pb-nav ${(!online || pendingCount > 0) ? 'pt-[88px]' : 'pt-16'}`}>
         <div className="py-4">
           {tab !== 'session' && <DraftRecoveryBanner onRestore={() => setTab('session')} />}
-          {pages[tab]}
+          <Suspense fallback={<div className="flex justify-center py-16"><div className="w-8 h-8 border-slate-200 border-t-primary rounded-full animate-spin" style={{ borderWidth: 3, borderStyle: 'solid' }} /></div>}>
+            {pages[tab]}
+          </Suspense>
         </div>
       </main>
       <BottomNav tab={tab} onTab={setTab} />
