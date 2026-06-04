@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X } from 'lucide-react'
+import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X, Share2 } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { Card } from '../components/ui/Card'
@@ -107,12 +107,25 @@ function Avatar({ name }: { name: string }) {
 
 function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onClose: () => void; onNavigate: (t: string) => void }) {
   const { updateConfig, setPanel } = useSessionStore()
-  const { renamePatient, deletePatient, renameProgram, deleteProgram } = useAppStore()
+  const { renamePatient, deletePatient, renameProgram, deleteProgram, createShareLink, showToast } = useAppStore()
 
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(patient.name)
   const [editingProg, setEditingProg] = useState<string | null>(null)
   const [progDraft, setProgDraft] = useState('')
+  const [shareUrl, setShareUrl] = useState('')
+  const [sharing, setSharing] = useState(false)
+
+  async function handleShare() {
+    if (!patient.id) return
+    setSharing(true)
+    const url = await createShareLink(patient.id)
+    setSharing(false)
+    if (url) {
+      setShareUrl(url)
+      try { await navigator.clipboard.writeText(url); showToast('Link copiado!', 'success') } catch { /* sem clipboard */ }
+    }
+  }
 
   function startSessionFor(prog?: PatientProgram) {
     updateConfig({ student: patient.name, program: prog?.name ?? '', criterion: prog?.criterion ?? 80 })
@@ -235,6 +248,22 @@ function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onCl
           <button onClick={() => startSessionFor()} className="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl mt-2 hover:bg-slate-800 transition-colors">
             + Novo Programa para {patient.name}
           </button>
+
+          {/* Portal para pais */}
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <button onClick={handleShare} disabled={sharing} className="w-full flex items-center justify-center gap-2 border border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold py-2.5 rounded-xl text-sm hover:bg-indigo-100 disabled:opacity-50">
+              <Share2 size={14} /> {sharing ? 'Gerando…' : 'Compartilhar com responsável'}
+            </button>
+            {shareUrl && (
+              <div className="mt-2">
+                <p className="text-xs text-slate-500 mb-1">Link de acompanhamento (válido por 90 dias):</p>
+                <div className="flex gap-2">
+                  <input readOnly value={shareUrl} className="flex-1 border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-slate-50 truncate" onFocus={e => e.currentTarget.select()} />
+                  <button onClick={() => { navigator.clipboard.writeText(shareUrl); showToast('Link copiado!', 'success') }} className="px-3 bg-primary text-white text-xs font-bold rounded-lg">Copiar</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

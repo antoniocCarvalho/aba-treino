@@ -43,6 +43,7 @@ interface AppState {
   changeEmail: (newEmail: string) => Promise<boolean>
   exportMyData: () => Promise<void>
   deleteAccount: () => Promise<boolean>
+  createShareLink: (patientId: string) => Promise<string | null>
   // offline / persistência de sessão
   commitSession: (payload: SessionPayload) => Promise<void>
   syncPending: () => Promise<void>
@@ -410,6 +411,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showToast('Erro ao exportar dados', 'error')
     } finally {
       set({ dataLoading: false })
+    }
+  },
+
+  // ── Portal para pais: gera link de progresso ──────────────────────────────
+  createShareLink: async (patientId) => {
+    const uid = get().user?.id
+    if (!uid) return null
+    try {
+      const token = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '')
+      const expires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString() // 90 dias
+      const { error } = await supabase.from('share_links')
+        .insert({ token, patient_id: patientId, psychologist_id: uid, expires_at: expires })
+      if (error) throw error
+      return `${window.location.origin}/?share=${token}`
+    } catch {
+      get().showToast('Erro ao gerar link de compartilhamento', 'error')
+      return null
     }
   },
 
