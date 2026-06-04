@@ -9,8 +9,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 export const config = { maxDuration: 60 }
 
-// Modelo gratuito e rápido. Alternativas: 'gemini-1.5-flash', 'gemini-2.5-flash'.
-const MODEL = 'gemini-2.0-flash'
+// Tenta nesta ordem até achar um modelo com cota gratuita disponível na conta.
+// (a disponibilidade do tier gratuito varia por região/conta — limit:0 = indisponível)
+const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b']
 
 const SYSTEM_PROMPT = `Você é um analista do comportamento (BCBA) experiente, redigindo relatórios de progresso clínico em Terapia ABA (Análise do Comportamento Aplicada) em português do Brasil.
 
@@ -94,67 +95,66 @@ ${JSON.stringify(
 
 Notas sobre os campos: "rate" = taxa de acertos (%); "pdi" = Índice de Independência (%); "phase" = fase do programa (baseline/acquisition/maintenance/generalization); "collectionType" = tipo de coleta; "criterion" = critério de maestria (%); "status" = classificação automática do programa.`
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`
   const requestBody = JSON.stringify({
     system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{ role: 'user', parts: [{ text: userContent }] }],
     generationConfig: { temperature: 0.6, maxOutputTokens: 3000 },
   })
 
-  async function callGemini() {
+  function callGemini(model: string) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: requestBody })
   }
 
-  // Extrai o tempo de espera sugerido pelo Google em respostas 429 (segundos)
-  function retryDelaySeconds(detail: any): number {
-    try {
-      const info = (detail?.error?.details ?? []).find((d: any) => String(d['@type'] || '').includes('RetryInfo'))
-      const s = info?.retryDelay ? parseInt(String(info.retryDelay)) : 0
-      return Math.min(Math.max(s || 0, 0), 30)
-    } catch { return 0 }
+  function extractReport(data: any): string {
+    const candidate = data?.candidates?.[0]
+    return (candidate?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('').trim()
   }
 
   try {
-    let resp = await callGemini()
+    let lastError = ''
+    let sawQuota = false
 
-    // 429 = limite da cota gratuita. Espera o tempo sugerido e tenta 1 vez mais.
-    if (resp.status === 429) {
-      const detail = await resp.json().catch(() => ({}))
-      const wait = retryDelaySeconds(detail) || 6
-      await new Promise((r) => setTimeout(r, wait * 1000))
-      resp = await callGemini()
-      if (resp.status === 429) {
-        const d2 = await resp.json().catch(() => ({}))
-        const msg = d2?.error?.message || 'limite de requisições atingido'
-        return res.status(429).json({
-          error: `Limite gratuito da IA atingido no momento. Aguarde cerca de 1 minuto e tente novamente. (${msg})`,
-        })
+    // Percorre os modelos; pula os que não têm cota gratuita (429) ou não existem (404).
+    for (const model of MODELS) {
+      const resp = await callGemini(model)
+
+      if (resp.ok) {
+        const data = await resp.json()
+        const report = extractReport(data)
+        if (report) return res.status(200).json({ report, model })
+        const reason = data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || 'desconhecido'
+        lastError = `A IA não retornou conteúdo (motivo: ${reason}).`
+        continue
       }
-    }
 
-    if (!resp.ok) {
       const detail = await resp.json().catch(() => ({}))
       const msg = detail?.error?.message || `erro ${resp.status}`
-      console.error('Gemini erro:', resp.status, msg)
-      const friendly = resp.status === 400 || resp.status === 403
-        ? `Problema com a chave do Gemini: ${msg}`
-        : `Falha ao gerar o relatório: ${msg}`
-      return res.status(resp.status >= 400 && resp.status < 600 ? resp.status : 500).json({ error: friendly })
+      lastError = msg
+
+      // 429 (quota) ou 404 (modelo indisponível) → tenta o próximo modelo
+      if (resp.status === 429 || resp.status === 404) {
+        if (resp.status === 429) sawQuota = true
+        console.warn(`Gemini ${model} indisponível (${resp.status}): ${msg}`)
+        continue
+      }
+
+      // 400/403 = problema de chave/requisição → não adianta tentar outros modelos
+      if (resp.status === 400 || resp.status === 403) {
+        return res.status(resp.status).json({ error: `Problema com a chave do Gemini: ${msg}` })
+      }
+
+      // Outros erros: tenta o próximo modelo mesmo assim
+      console.warn(`Gemini ${model} erro ${resp.status}: ${msg}`)
     }
 
-    const data = await resp.json()
-    const candidate = data?.candidates?.[0]
-    const report: string = (candidate?.content?.parts ?? [])
-      .map((p: { text?: string }) => p.text ?? '')
-      .join('')
-      .trim()
-
-    if (!report) {
-      const reason = candidate?.finishReason || data?.promptFeedback?.blockReason || 'desconhecido'
-      return res.status(502).json({ error: `A IA não retornou conteúdo (motivo: ${reason}).` })
+    // Nenhum modelo funcionou
+    if (sawQuota) {
+      return res.status(429).json({
+        error: 'Nenhum modelo gratuito do Gemini está disponível na sua conta no momento (cota = 0). Tente novamente em alguns minutos ou ative o faturamento gratuito no Google AI Studio.',
+      })
     }
-
-    return res.status(200).json({ report })
+    return res.status(502).json({ error: `Falha ao gerar o relatório: ${lastError || 'erro desconhecido'}` })
   } catch (e: any) {
     console.error('Erro ao gerar relatório:', e?.message || e)
     return res.status(500).json({ error: 'Falha ao gerar o relatório. Tente novamente.' })
