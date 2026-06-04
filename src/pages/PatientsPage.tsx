@@ -4,6 +4,7 @@ import { useAppStore } from '../stores/appStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { Card } from '../components/ui/Card'
 import { StatusBadge } from '../components/ui/Badge'
+import { Dashboard } from '../components/Dashboard'
 import { computeStatus, computeStreak, rateColor } from '../lib/aba'
 import { cls } from '../lib/utils'
 import type { Patient, PatientProgram } from '../types'
@@ -62,6 +63,8 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
 
   return (
     <>
+      <Dashboard onNavigate={onNavigate} />
+
       <div className="mb-4">
         <div className="relative">
           <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />

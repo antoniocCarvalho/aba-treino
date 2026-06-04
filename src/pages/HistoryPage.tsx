@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import { Trash2, Pencil, Check, X, CheckCircle2, Users } from 'lucide-react'
+import { Trash2, Pencil, Check, X, CheckCircle2, Users, CloudOff } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { supabase } from '../lib/supabase'
+import { dequeue } from '../lib/offline'
 import { movingAverage, rateColor, PHASE_LABEL, formatDuration } from '../lib/aba'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -55,6 +56,13 @@ export function HistoryPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Remover esta sessão?')) return
+    // Sessão ainda na fila offline: remove da fila e do estado local
+    if (id.startsWith('local_')) {
+      dequeue(id.replace('local_', ''))
+      removeSession(id)
+      showToast('Sessão pendente removida', 'success')
+      return
+    }
     const { error } = await supabase.from('sessions').delete().eq('id', id)
     if (error) { showToast('Erro ao remover sessão', 'error'); return }
     removeSession(id)
@@ -156,6 +164,9 @@ export function HistoryPage() {
                       )}
                       {s.reviewedAt && (
                         <Badge color="green"><CheckCircle2 size={10} className="inline mr-0.5" />Revisado</Badge>
+                      )}
+                      {s._pending && (
+                        <Badge color="amber"><CloudOff size={10} className="inline mr-0.5" />Pendente</Badge>
                       )}
                     </div>
                     <p className="text-xs text-slate-500 truncate">{s.program}</p>

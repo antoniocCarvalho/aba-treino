@@ -1,16 +1,15 @@
 import { useState } from 'react'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useAppStore } from '../../stores/appStore'
-import { supabase } from '../../lib/supabase'
-import { normalizeSession } from '../../lib/utils'
 import { formatDuration } from '../../lib/aba'
+import type { SessionPayload } from '../../lib/offline'
 import { TextArea } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 
 export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void }) {
   const { active, log, freqCount, durLog, abcLog, resetSession } = useSessionStore()
-  const { user, sessions, addSession, showToast } = useAppStore()
+  const { user, sessions, commitSession } = useAppStore()
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -51,57 +50,32 @@ export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void 
   const projStreak = active.collectionType === 'dtt' && rate >= active.criterion ? prevStreak + 1 : 0
 
   async function handleSave() {
-    if (!user) return
+    if (!user || !active) return
     setSaving(true)
-    try {
-      // Upsert patient
-      const { data: pat, error: pe } = await supabase.from('patients')
-        .upsert({ name: active!.student, psychologist_id: user.id }, { onConflict: 'psychologist_id,name' })
-        .select('id').single()
-      if (pe) throw pe
 
-      // Upsert program
-      const { data: prog, error: pre } = await supabase.from('programs')
-        .upsert({ patient_id: pat.id, psychologist_id: user.id, name: active!.program, criterion: active!.criterion }, { onConflict: 'patient_id,name' })
-        .select('id').single()
-      if (pre) throw pre
+    const finalStreak = active.collectionType === 'dtt'
+      ? (rate >= active.criterion ? prevStreak + 1 : 0)
+      : prevStreak
 
-      // Calc final streak
-      let finalStreak = prevStreak
-      if (active!.collectionType === 'dtt') finalStreak = rate >= active!.criterion ? prevStreak + 1 : 0
-
-      const now = new Date()
-      const { data: saved, error: se } = await supabase.from('sessions').insert({
-        psychologist_id: user.id,
-        patient_id:     pat.id,
-        program_id:     prog.id,
-        session_date:   now.toISOString().slice(0, 10),
-        session_time:   now.toTimeString().slice(0, 8),
-        planned_trials: active!.plannedTrials,
-        trials, score: parseFloat(score.toFixed(2)),
-        rate: parseFloat(rate.toFixed(2)),
-        ind_count: ind, pr_count: pr, err_count: err,
-        pdi: pdi !== null ? parseFloat(pdi.toFixed(1)) : null,
-        criterion: active!.criterion,
-        duration, streak: finalStreak,
-        notes,
-        phase: active!.phase,
-        prompt_mode: active!.promptMode,
-        collection_type: active!.collectionType,
-        trial_log: active!.collectionType === 'dtt' ? log : active!.collectionType === 'abc' ? abcLog : active!.collectionType === 'duration' ? durLog : [{ count: freqCount }],
-      }).select(`id, session_date, session_time, recorded_at, planned_trials, trials, score, rate, ind_count, pr_count, err_count, pdi, criterion, duration, streak, notes, trial_log, phase, prompt_mode, collection_type, patient:patients!patient_id(id,name), program:programs!program_id(id,name)`).single()
-      if (se) throw se
-
-      addSession(normalizeSession(saved))
-      showToast('Sessão salva com sucesso!', 'success')
-      resetSession()
-      onNavigate('patients')
-    } catch (e: any) {
-      console.error(e)
-      showToast(e?.message || 'Erro ao salvar sessão', 'error')
-    } finally {
-      setSaving(false)
+    const payload: SessionPayload = {
+      localId: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      student: active.student, program: active.program,
+      plannedTrials: active.plannedTrials, criterion: active.criterion,
+      phase: active.phase, promptMode: active.promptMode, collectionType: active.collectionType,
+      trials, score: parseFloat(score.toFixed(2)), rate: parseFloat(rate.toFixed(2)),
+      pdi: pdi !== null ? parseFloat(pdi.toFixed(1)) : null,
+      ind, pr, err, duration, streak: finalStreak, notes,
+      log: active.collectionType === 'dtt' ? log
+         : active.collectionType === 'abc' ? abcLog
+         : active.collectionType === 'duration' ? durLog
+         : [{ count: freqCount }],
+      createdAt: Date.now(),
     }
+
+    await commitSession(payload)
+    resetSession()
+    onNavigate('patients')
+    setSaving(false)
   }
 
   const emoji = rate >= active.criterion ? '🏆' : rate >= 70 ? '⭐' : rate >= 50 ? '📈' : '📝'

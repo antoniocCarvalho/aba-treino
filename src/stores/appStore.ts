@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { normalizeSession } from '../lib/utils'
+import { enqueue, dequeue, getQueue, type SessionPayload } from '../lib/offline'
 import type { Session, Profile } from '../types'
 import type { User } from '@supabase/supabase-js'
 
@@ -10,6 +11,7 @@ interface AppState {
   sessions: Session[]
   loading: boolean
   dataLoading: boolean
+  pendingCount: number
   toast: { show: boolean; msg: string; type: 'success' | 'warning' | 'error' | 'info' }
   setUser: (u: User | null) => void
   setProfile: (p: Profile | null) => void
@@ -34,6 +36,63 @@ interface AppState {
   unmarkReviewed: (id: string) => Promise<boolean>
   setRole: (role: 'bcba' | 'rbt') => Promise<boolean>
   linkSupervisor: (email: string) => Promise<boolean>
+  // offline / persistência de sessão
+  commitSession: (payload: SessionPayload) => Promise<void>
+  syncPending: () => Promise<void>
+}
+
+// Converte um payload em uma Session otimista (exibida enquanto não sincroniza)
+function payloadToOptimistic(p: SessionPayload, uid?: string): Session {
+  const d = new Date(p.createdAt)
+  return {
+    id: 'local_' + p.localId,
+    student: p.student, program: p.program,
+    date: d.toLocaleDateString('pt-BR'),
+    time: d.toTimeString().slice(0, 5),
+    timestamp: p.createdAt,
+    plannedTrials: p.plannedTrials, trials: p.trials,
+    score: p.score, rate: p.rate, pdi: p.pdi,
+    ind: p.ind, pr: p.pr, err: p.err,
+    criterion: p.criterion, duration: p.duration, streak: p.streak,
+    notes: p.notes, log: p.log as any,
+    phase: p.phase, promptMode: p.promptMode, collectionType: p.collectionType,
+    reviewedAt: null, reviewedBy: null, supervisorNotes: '',
+    _psychologistId: uid, _pending: true,
+  }
+}
+
+// Roda a cadeia upsert paciente → upsert programa → insert sessão no Supabase
+async function persistToSupabase(p: SessionPayload, uid: string): Promise<Session> {
+  const { data: pat, error: pe } = await supabase.from('patients')
+    .upsert({ name: p.student, psychologist_id: uid }, { onConflict: 'psychologist_id,name' })
+    .select('id').single()
+  if (pe) throw pe
+
+  const { data: prog, error: pre } = await supabase.from('programs')
+    .upsert({ patient_id: pat.id, psychologist_id: uid, name: p.program, criterion: p.criterion }, { onConflict: 'patient_id,name' })
+    .select('id').single()
+  if (pre) throw pre
+
+  const d = new Date(p.createdAt)
+  const { data: saved, error: se } = await supabase.from('sessions').insert({
+    psychologist_id: uid, patient_id: pat.id, program_id: prog.id,
+    session_date: d.toISOString().slice(0, 10),
+    session_time: d.toTimeString().slice(0, 8),
+    planned_trials: p.plannedTrials, trials: p.trials,
+    score: p.score, rate: p.rate,
+    ind_count: p.ind, pr_count: p.pr, err_count: p.err,
+    pdi: p.pdi, criterion: p.criterion, duration: p.duration, streak: p.streak,
+    notes: p.notes, phase: p.phase, prompt_mode: p.promptMode, collection_type: p.collectionType,
+    trial_log: p.log,
+  }).select(`
+    id, psychologist_id, session_date, session_time, recorded_at,
+    planned_trials, trials, score, rate, ind_count, pr_count, err_count,
+    pdi, criterion, duration, streak, notes, trial_log,
+    phase, prompt_mode, collection_type, reviewed_at, reviewed_by, supervisor_notes,
+    patient:patients!patient_id(id, name), program:programs!program_id(id, name)
+  `).single()
+  if (se) throw se
+  return normalizeSession(saved)
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -42,6 +101,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   sessions: [],
   loading: true,
   dataLoading: false,
+  pendingCount: getQueue().length,
   toast: { show: false, msg: '', type: 'success' },
 
   setUser: (u) => set({ user: u }),
@@ -231,5 +291,65 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showToast('Erro ao vincular supervisor', 'error')
       return false
     }
+  },
+
+  // ── Persistência de sessão (online/offline) ───────────────────────────────
+  commitSession: async (payload) => {
+    const uid = get().user?.id
+    if (!uid) return
+
+    // Offline → enfileira + sessão otimista local
+    if (!navigator.onLine) {
+      enqueue(payload)
+      set((st) => ({
+        sessions: [...st.sessions, payloadToOptimistic(payload, uid)],
+        pendingCount: getQueue().length,
+      }))
+      get().showToast('Sem internet — salvo no dispositivo, sincroniza ao reconectar', 'warning')
+      return
+    }
+
+    // Online → persiste direto
+    set({ dataLoading: true })
+    try {
+      const saved = await persistToSupabase(payload, uid)
+      set((st) => ({ sessions: [...st.sessions, saved] }))
+      get().showToast('Sessão salva com sucesso!', 'success')
+    } catch (e) {
+      // Falha de rede → cai pra fila offline
+      console.error(e)
+      enqueue(payload)
+      set((st) => ({
+        sessions: [...st.sessions, payloadToOptimistic(payload, uid)],
+        pendingCount: getQueue().length,
+      }))
+      get().showToast('Falha de conexão — salvo localmente para sincronizar', 'warning')
+    } finally {
+      set({ dataLoading: false })
+    }
+  },
+
+  syncPending: async () => {
+    const uid = get().user?.id
+    const queue = getQueue()
+    if (!uid || !queue.length || !navigator.onLine) return
+
+    let synced = 0
+    for (const payload of queue) {
+      try {
+        const saved = await persistToSupabase(payload, uid)
+        dequeue(payload.localId)
+        // Substitui a sessão otimista pela definitiva
+        set((st) => ({
+          sessions: st.sessions.map((s) => s.id === 'local_' + payload.localId ? saved : s),
+          pendingCount: getQueue().length,
+        }))
+        synced++
+      } catch (e) {
+        console.error('Falha ao sincronizar sessão', e)
+        // mantém na fila para a próxima tentativa
+      }
+    }
+    if (synced > 0) get().showToast(`${synced} sessão(ões) sincronizada(s)`, 'success')
   },
 }))

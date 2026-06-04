@@ -40,6 +40,7 @@ export interface Session {
   _patientId?: string
   _programId?: string
   _psychologistId?: string
+  _pending?: boolean
 }
 
 export interface ActiveSession {
