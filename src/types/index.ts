@@ -88,6 +88,7 @@ export interface Profile {
   email?: string
   role?: Role
   supervisor_id?: string | null
+  avatar_url?: string
 }
 
 export interface Patient {

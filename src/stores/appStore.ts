@@ -38,9 +38,11 @@ interface AppState {
   setRole: (role: 'bcba' | 'rbt') => Promise<boolean>
   linkSupervisor: (email: string) => Promise<boolean>
   // conta / perfil
-  updateProfile: (updates: { full_name?: string; crp?: string }) => Promise<boolean>
+  updateProfile: (updates: { full_name?: string; crp?: string; avatar_url?: string }) => Promise<boolean>
   changePassword: (newPassword: string) => Promise<boolean>
   changeEmail: (newEmail: string) => Promise<boolean>
+  exportMyData: () => Promise<void>
+  deleteAccount: () => Promise<boolean>
   // offline / persistência de sessão
   commitSession: (payload: SessionPayload) => Promise<void>
   syncPending: () => Promise<void>
@@ -343,6 +345,87 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e: any) {
       const msg = e?.message?.includes('already') ? 'Este e-mail já está em uso' : 'Erro ao alterar e-mail'
       get().showToast(msg, 'error')
+      return false
+    }
+  },
+
+  // ── Exportação completa (portabilidade LGPD) ──────────────────────────────
+  exportMyData: async () => {
+    const uid = get().user?.id
+    if (!uid) return
+    set({ dataLoading: true })
+    try {
+      const [patientsRes, programsRes, sessionsRes, goalsRes] = await Promise.all([
+        supabase.from('patients').select('id, name, birth_date, notes, created_at').eq('psychologist_id', uid),
+        supabase.from('programs').select('id, patient_id, name, criterion, status, created_at').eq('psychologist_id', uid),
+        supabase.from('sessions').select('*').eq('psychologist_id', uid).order('recorded_at', { ascending: true }),
+        supabase.from('treatment_goals').select('*').eq('psychologist_id', uid),
+      ])
+      const patients = patientsRes.data ?? []
+      const programs = programsRes.data ?? []
+      const sessions = sessionsRes.data ?? []
+      const goals = goalsRes.data ?? []
+      const prof = get().profile
+
+      // Monta hierarquia paciente → programa → sessões
+      const data = {
+        exportadoEm: new Date().toISOString(),
+        versao: 1,
+        profissional: {
+          nome: prof?.full_name ?? '', crp: prof?.crp ?? '',
+          email: get().user?.email ?? '', papel: prof?.role ?? 'bcba',
+        },
+        pacientes: patients.map((p: any) => ({
+          nome: p.name,
+          nascimento: p.birth_date,
+          observacoes: p.notes,
+          cadastradoEm: p.created_at,
+          objetivos: goals.filter((g: any) => g.patient_id === p.id).map((g: any) => ({
+            titulo: g.title, dominio: g.domain, prazo: g.term, status: g.status,
+            metaConclusao: g.target_date, descricao: g.description,
+          })),
+          programas: programs.filter((pr: any) => pr.patient_id === p.id).map((pr: any) => ({
+            nome: pr.name, criterio: pr.criterion, status: pr.status,
+            sessoes: sessions.filter((s: any) => s.program_id === pr.id).map((s: any) => ({
+              data: s.session_date, hora: s.session_time, tipoColeta: s.collection_type,
+              fase: s.phase, tentativas: s.trials, taxa: s.rate, idi: s.pdi,
+              independente: s.ind_count, comPrompt: s.pr_count, erro: s.err_count,
+              criterio: s.criterion, observacoes: s.notes, registros: s.trial_log,
+            })),
+          })),
+        })),
+        totais: { pacientes: patients.length, programas: programs.length, sessoes: sessions.length, objetivos: goals.length },
+      }
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `aba_meus_dados_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.json`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      get().showToast('Dados exportados com sucesso', 'success')
+    } catch (e) {
+      console.error(e)
+      get().showToast('Erro ao exportar dados', 'error')
+    } finally {
+      set({ dataLoading: false })
+    }
+  },
+
+  // ── Exclusão de conta (irreversível) ──────────────────────────────────────
+  deleteAccount: async () => {
+    set({ dataLoading: true })
+    try {
+      const { error } = await supabase.rpc('delete_my_account')
+      if (error) throw error
+      await supabase.auth.signOut()
+      set({ user: null, profile: null, sessions: [], goals: [], dataLoading: false })
+      return true
+    } catch (e) {
+      console.error(e)
+      get().showToast('Erro ao excluir conta. Tente novamente.', 'error')
+      set({ dataLoading: false })
       return false
     }
   },

@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { UserCog, GraduationCap, Link2, Vibrate, SlidersHorizontal, ShieldCheck, HelpCircle, Pencil, Check, X, KeyRound, Mail } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { UserCog, GraduationCap, Link2, Vibrate, SlidersHorizontal, ShieldCheck, HelpCircle, Pencil, Check, X, KeyRound, Mail, Camera, Trash2, Download, Package, AlertTriangle } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useSettingsStore } from '../stores/settingsStore'
+import { fileToAvatar } from '../lib/avatar'
 import { Card } from '../components/ui/Card'
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -17,11 +18,38 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 }
 
 export function SettingsPage({ onNavigate }: { onNavigate: (tab: string) => void }) {
-  const { profile, user, setRole, linkSupervisor, updateProfile, changePassword, changeEmail } = useAppStore()
+  const { profile, user, setRole, linkSupervisor, updateProfile, changePassword, changeEmail, exportMyData, deleteAccount, showToast } = useAppStore()
   const { supervisionEnabled, setSupervisionEnabled, hapticEnabled, setHapticEnabled, defaultCriterion, setDefaultCriterion } = useSettingsStore()
   const [supEmail, setSupEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const role = profile?.role ?? 'bcba'
+
+  // Avatar
+  const fileRef = useRef<HTMLInputElement>(null)
+  async function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) { showToast('Imagem muito grande (máx. 5MB)', 'warning'); return }
+    try {
+      const dataUrl = await fileToAvatar(file)
+      await updateProfile({ avatar_url: dataUrl })
+    } catch {
+      showToast('Não foi possível processar a imagem', 'error')
+    } finally {
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  // Excluir conta
+  const [delOpen, setDelOpen] = useState(false)
+  const [delConfirm, setDelConfirm] = useState('')
+  async function handleDelete() {
+    if (delConfirm.trim().toUpperCase() !== 'EXCLUIR') return
+    await deleteAccount()
+    // signOut no store leva de volta à tela de login automaticamente
+  }
+
+  const initial = (profile?.full_name || user?.email || '?').charAt(0).toUpperCase()
 
   // Edição de perfil
   const [editProfile, setEditProfile] = useState(false)
@@ -192,6 +220,27 @@ export function SettingsPage({ onNavigate }: { onNavigate: (tab: string) => void
           )}
         </div>
 
+        {/* Avatar */}
+        <div className="flex items-center gap-4 mb-5">
+          <div className="relative">
+            {profile?.avatar_url
+              ? <img src={profile.avatar_url} alt="Avatar" className="w-16 h-16 rounded-2xl object-cover" />
+              : <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center text-white text-2xl font-black">{initial}</div>}
+            <button onClick={() => fileRef.current?.click()} className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border border-slate-200 shadow flex items-center justify-center text-primary hover:bg-slate-50">
+              <Camera size={13} />
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onPickAvatar} className="hidden" />
+          </div>
+          <div>
+            <button onClick={() => fileRef.current?.click()} className="text-sm font-semibold text-primary hover:underline block">Alterar foto</button>
+            {profile?.avatar_url && (
+              <button onClick={() => updateProfile({ avatar_url: '' })} className="text-xs text-slate-400 hover:text-red-500 flex items-center gap-1 mt-1">
+                <Trash2 size={11} /> Remover
+              </button>
+            )}
+          </div>
+        </div>
+
         {editProfile ? (
           <div className="space-y-3">
             <div>
@@ -254,6 +303,53 @@ export function SettingsPage({ onNavigate }: { onNavigate: (tab: string) => void
             <div className="flex gap-2">
               <button onClick={saveEmail} disabled={busy || !newEmail.trim()} className="flex-1 bg-primary text-white text-sm font-bold py-2.5 rounded-xl disabled:opacity-50">Enviar confirmação</button>
               <button onClick={() => { setShowEmail(false); setNewEmail('') }} className="px-4 border border-slate-200 text-slate-600 text-sm font-semibold rounded-xl">Cancelar</button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Meus Dados (LGPD) */}
+      <Card className="p-5">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Meus Dados</p>
+        <button onClick={exportMyData} className="w-full flex items-center gap-3 text-left">
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><Package size={16} /></div>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-slate-800">Exportar todos os meus dados</p>
+            <p className="text-xs text-slate-400">Backup completo em JSON (portabilidade LGPD)</p>
+          </div>
+          <Download size={16} className="text-slate-300" />
+        </button>
+      </Card>
+
+      {/* Zona de Perigo */}
+      <Card className="p-5 border-red-100">
+        <p className="text-xs font-bold text-red-400 uppercase tracking-wide mb-3">Zona de Perigo</p>
+        {!delOpen ? (
+          <button onClick={() => setDelOpen(true)} className="w-full flex items-center gap-3 text-left">
+            <div className="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center"><Trash2 size={16} /></div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-600">Excluir minha conta</p>
+              <p className="text-xs text-slate-400">Remove permanentemente todos os dados</p>
+            </div>
+          </button>
+        ) : (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="flex items-start gap-2 mb-3">
+              <AlertTriangle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-800 leading-relaxed">
+                Esta ação é <strong>irreversível</strong>. Todos os seus pacientes, programas, sessões e objetivos
+                serão apagados permanentemente. Recomendamos <strong>exportar seus dados antes</strong>.
+              </p>
+            </div>
+            <label className="text-xs font-semibold text-red-700 block mb-1">Digite <strong>EXCLUIR</strong> para confirmar</label>
+            <input value={delConfirm} onChange={e => setDelConfirm(e.target.value)} placeholder="EXCLUIR"
+              className="w-full border border-red-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-400 mb-3" />
+            <div className="flex gap-2">
+              <button onClick={handleDelete} disabled={delConfirm.trim().toUpperCase() !== 'EXCLUIR' || busy}
+                className="flex-1 bg-red-600 text-white text-sm font-bold py-2.5 rounded-xl disabled:opacity-40">
+                Excluir permanentemente
+              </button>
+              <button onClick={() => { setDelOpen(false); setDelConfirm('') }} className="px-4 border border-slate-200 text-slate-600 text-sm font-semibold rounded-xl bg-white">Cancelar</button>
             </div>
           </div>
         )}

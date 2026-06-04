@@ -39,7 +39,9 @@ export function Header({ onNavigate }: { onNavigate?: (tab: string) => void }) {
               onClick={() => setMenuOpen(!menuOpen)}
               className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1 pr-2.5 py-1 hover:bg-slate-100 transition-colors"
             >
-              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold">{initial}</div>
+              {profile?.avatar_url
+                ? <img src={profile.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
+                : <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold">{initial}</div>}
               <span className="text-xs font-semibold text-slate-700 max-w-20 truncate">{profile?.full_name || user?.email}</span>
               <ChevronDown size={12} className="text-slate-400" />
             </button>
