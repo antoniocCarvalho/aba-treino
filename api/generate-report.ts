@@ -94,23 +94,52 @@ ${JSON.stringify(
 
 Notas sobre os campos: "rate" = taxa de acertos (%); "pdi" = Índice de Independência (%); "phase" = fase do programa (baseline/acquisition/maintenance/generalization); "collectionType" = tipo de coleta; "criterion" = critério de maestria (%); "status" = classificação automática do programa.`
 
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`
+  const requestBody = JSON.stringify({
+    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: userContent }] }],
+    generationConfig: { temperature: 0.6, maxOutputTokens: 3000 },
+  })
+
+  async function callGemini() {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: requestBody })
+  }
+
+  // Extrai o tempo de espera sugerido pelo Google em respostas 429 (segundos)
+  function retryDelaySeconds(detail: any): number {
+    try {
+      const info = (detail?.error?.details ?? []).find((d: any) => String(d['@type'] || '').includes('RetryInfo'))
+      const s = info?.retryDelay ? parseInt(String(info.retryDelay)) : 0
+      return Math.min(Math.max(s || 0, 0), 30)
+    } catch { return 0 }
+  }
+
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: 'user', parts: [{ text: userContent }] }],
-        generationConfig: { temperature: 0.6, maxOutputTokens: 3000 },
-      }),
-    })
+    let resp = await callGemini()
+
+    // 429 = limite da cota gratuita. Espera o tempo sugerido e tenta 1 vez mais.
+    if (resp.status === 429) {
+      const detail = await resp.json().catch(() => ({}))
+      const wait = retryDelaySeconds(detail) || 6
+      await new Promise((r) => setTimeout(r, wait * 1000))
+      resp = await callGemini()
+      if (resp.status === 429) {
+        const d2 = await resp.json().catch(() => ({}))
+        const msg = d2?.error?.message || 'limite de requisições atingido'
+        return res.status(429).json({
+          error: `Limite gratuito da IA atingido no momento. Aguarde cerca de 1 minuto e tente novamente. (${msg})`,
+        })
+      }
+    }
 
     if (!resp.ok) {
-      const detail = await resp.text().catch(() => '')
-      console.error('Gemini erro:', resp.status, detail)
-      return res.status(resp.status >= 400 && resp.status < 600 ? resp.status : 500)
-        .json({ error: 'Falha ao gerar o relatório. Verifique a chave e tente novamente.' })
+      const detail = await resp.json().catch(() => ({}))
+      const msg = detail?.error?.message || `erro ${resp.status}`
+      console.error('Gemini erro:', resp.status, msg)
+      const friendly = resp.status === 400 || resp.status === 403
+        ? `Problema com a chave do Gemini: ${msg}`
+        : `Falha ao gerar o relatório: ${msg}`
+      return res.status(resp.status >= 400 && resp.status < 600 ? resp.status : 500).json({ error: friendly })
     }
 
     const data = await resp.json()
