@@ -1,13 +1,14 @@
 import { useState, useMemo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell } from 'recharts'
-import { Printer, Download } from 'lucide-react'
+import { Printer, Download, FileSpreadsheet } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { computeStatus, computeStreak, movingAverage, trendArrow, linearRegression, rateColor, PHASE_LABEL, formatDuration } from '../lib/aba'
+import { exportSessionsCSV, exportSessionsJSON, dateStamp } from '../lib/export'
 import { Card } from '../components/ui/Card'
 import { StatusBadge } from '../components/ui/Badge'
 
 export function ReportPage() {
-  const sessions = useAppStore((s) => s.sessions)
+  const { sessions, profile } = useAppStore()
   const [student, setStudent] = useState('')
   const [program, setProgram] = useState('')
 
@@ -53,12 +54,7 @@ export function ReportPage() {
     ]
   }, [filtered])
 
-  function exportJSON() {
-    if (!filtered.length) return
-    const blob = new Blob([JSON.stringify(filtered, null, 2)], { type: 'application/json' })
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `aba_${student.replace(/\s+/g,'_')}_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.json` })
-    a.click(); URL.revokeObjectURL(a.href)
-  }
+  const fileBase = `aba_${student.replace(/\s+/g, '_')}_${dateStamp()}`
 
   return (
     <div className="space-y-4">
@@ -74,15 +70,36 @@ export function ReportPage() {
             {programs.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => window.print()} disabled={!filtered.length} className="flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 font-semibold py-2.5 rounded-xl text-sm hover:bg-indigo-100 disabled:opacity-50">
-            <Printer size={14} /> Imprimir / PDF
+        <div className="grid grid-cols-3 gap-2">
+          <button onClick={() => window.print()} disabled={!filtered.length} className="flex items-center justify-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 font-semibold py-2.5 rounded-xl text-xs hover:bg-indigo-100 disabled:opacity-50">
+            <Printer size={14} /> PDF
           </button>
-          <button onClick={exportJSON} disabled={!filtered.length} className="flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl text-sm hover:bg-slate-50 disabled:opacity-50">
-            <Download size={14} /> Exportar JSON
+          <button onClick={() => exportSessionsCSV(filtered, `${fileBase}.csv`)} disabled={!filtered.length} className="flex items-center justify-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 font-semibold py-2.5 rounded-xl text-xs hover:bg-emerald-100 disabled:opacity-50">
+            <FileSpreadsheet size={14} /> CSV
+          </button>
+          <button onClick={() => exportSessionsJSON(filtered, `${fileBase}.json`)} disabled={!filtered.length} className="flex items-center justify-center gap-1.5 bg-white border border-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl text-xs hover:bg-slate-50 disabled:opacity-50">
+            <Download size={14} /> JSON
           </button>
         </div>
       </Card>
+
+      {/* Cabeçalho profissional — só no PDF impresso */}
+      {filtered.length > 0 && (
+        <div className="hidden print:block mb-2">
+          <div className="flex items-start justify-between border-b-2 border-slate-800 pb-3 mb-4">
+            <div>
+              <h1 className="text-xl font-black text-slate-900">Relatório de Progresso — Terapia ABA</h1>
+              <p className="text-sm text-slate-600 mt-0.5">Paciente: <strong>{student}</strong>{program ? ` · Programa: ${program}` : ''}</p>
+            </div>
+            <div className="text-right text-xs text-slate-500">
+              <p className="font-semibold text-slate-700">{profile?.full_name || 'Profissional'}</p>
+              {profile?.crp && <p>CRP {profile.crp}</p>}
+              <p>{profile?.role === 'rbt' ? 'Técnico (RBT)' : 'Supervisor (BCBA)'}</p>
+              <p>Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!student && (
         <Card className="p-10 text-center">

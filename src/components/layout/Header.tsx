@@ -1,14 +1,17 @@
 import { useState } from 'react'
-import { LogOut, ChevronDown, ClipboardList } from 'lucide-react'
+import { LogOut, ChevronDown, ClipboardList, UserCog } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useSessionStore } from '../../stores/sessionStore'
+import { SettingsModal } from '../SettingsModal'
 
 export function Header() {
   const { user, profile, logout } = useAppStore()
   const active = useSessionStore((s) => s.active)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const initial = (profile?.full_name || user?.email || '?').charAt(0).toUpperCase()
+  const roleLabel = profile?.role === 'rbt' ? 'Técnico (RBT)' : 'Supervisor (BCBA)'
 
   return (
     <header className="fixed top-0 left-0 right-0 z-40 bg-white border-b border-slate-100 shadow-sm no-print">
@@ -45,10 +48,17 @@ export function Header() {
                     <p className="text-sm font-semibold text-slate-800">{profile?.full_name || 'Psicólogo'}</p>
                     <p className="text-xs text-slate-400">{user?.email}</p>
                     {profile?.crp && <p className="text-xs text-slate-400 mt-0.5">CRP {profile.crp}</p>}
+                    <span className="inline-block mt-1.5 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{roleLabel}</span>
                   </div>
                   <button
+                    onClick={() => { setMenuOpen(false); setSettingsOpen(true) }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <UserCog size={14} /> Supervisão
+                  </button>
+                  <button
                     onClick={() => { setMenuOpen(false); logout() }}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors border-t border-slate-100"
                   >
                     <LogOut size={14} /> Sair
                   </button>
@@ -58,6 +68,7 @@ export function Header() {
           </div>
         </div>
       </div>
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </header>
   )
 }

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Pencil, Check, X, CheckCircle2, Users } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { supabase } from '../lib/supabase'
 import { movingAverage, rateColor, PHASE_LABEL, formatDuration } from '../lib/aba'
@@ -8,9 +8,15 @@ import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 
 export function HistoryPage() {
-  const { sessions, removeSession, showToast } = useAppStore()
+  const { sessions, removeSession, showToast, updateSessionNotes, markReviewed, unmarkReviewed, user, profile } = useAppStore()
   const [fStudent, setFStudent] = useState('')
   const [fProgram, setFProgram] = useState('')
+  const [editingNotes, setEditingNotes] = useState<string | null>(null)
+  const [notesDraft, setNotesDraft] = useState('')
+  const [reviewing, setReviewing] = useState<string | null>(null)
+  const [reviewDraft, setReviewDraft] = useState('')
+  const [onlyPending, setOnlyPending] = useState(false)
+  const isSupervisor = profile?.role === 'bcba'
 
   const students = useMemo(() => [...new Set(sessions.map(s => s.student))].sort(), [sessions])
   const programs = useMemo(() => {
@@ -19,10 +25,15 @@ export function HistoryPage() {
   }, [sessions, fStudent])
 
   const filtered = useMemo(() =>
-    sessions.filter(s => (!fStudent || s.student === fStudent) && (!fProgram || s.program === fProgram))
-      .sort((a, b) => a.timestamp - b.timestamp),
-    [sessions, fStudent, fProgram]
+    sessions.filter(s =>
+      (!fStudent || s.student === fStudent) &&
+      (!fProgram || s.program === fProgram) &&
+      (!onlyPending || !s.reviewedAt)
+    ).sort((a, b) => a.timestamp - b.timestamp),
+    [sessions, fStudent, fProgram, onlyPending]
   )
+
+  const pendingCount = useMemo(() => sessions.filter(s => !s.reviewedAt).length, [sessions])
 
   const criterion = filtered[filtered.length - 1]?.criterion ?? 80
   const rates = filtered.map(s => s.rate)
@@ -50,6 +61,16 @@ export function HistoryPage() {
     showToast('Sessão removida', 'success')
   }
 
+  async function saveNotes(id: string) {
+    const ok = await updateSessionNotes(id, notesDraft.trim())
+    if (ok) setEditingNotes(null)
+  }
+
+  async function saveReview(id: string) {
+    const ok = await markReviewed(id, reviewDraft.trim())
+    if (ok) setReviewing(null)
+  }
+
   return (
     <div className="space-y-4">
       {/* Filters */}
@@ -64,6 +85,15 @@ export function HistoryPage() {
             {programs.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
+        {isSupervisor && pendingCount > 0 && (
+          <button
+            onClick={() => setOnlyPending(v => !v)}
+            className={`mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-all ${onlyPending ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}
+          >
+            <CheckCircle2 size={14} />
+            {onlyPending ? `Mostrando ${filtered.length} pendentes — ver todas` : `${pendingCount} sessões pendentes de revisão`}
+          </button>
+        )}
       </Card>
 
       {/* Chart */}
@@ -121,22 +151,72 @@ export function HistoryPage() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-sm font-bold text-slate-800 truncate">{s.student}</p>
                       <Badge color="indigo">{PHASE_LABEL[s.phase] ?? 'Aquisição'}</Badge>
+                      {s._psychologistId && user && s._psychologistId !== user.id && (
+                        <Badge color="gray"><Users size={10} className="inline mr-0.5" />Equipe</Badge>
+                      )}
+                      {s.reviewedAt && (
+                        <Badge color="green"><CheckCircle2 size={10} className="inline mr-0.5" />Revisado</Badge>
+                      )}
                     </div>
                     <p className="text-xs text-slate-500 truncate">{s.program}</p>
                     <p className="text-xs text-slate-400 mt-0.5">{s.date} {s.time} · {s.trials} tent. · {formatDuration(s.duration)}</p>
-                    {s.notes && <p className="text-xs text-slate-400 italic mt-0.5 truncate">💬 {s.notes}</p>}
+                    {editingNotes !== s.id && s.notes && <p className="text-xs text-slate-400 italic mt-0.5 truncate">💬 {s.notes}</p>}
+                    {s.supervisorNotes && reviewing !== s.id && <p className="text-xs text-emerald-600 italic mt-0.5 truncate">👨‍⚕️ {s.supervisorNotes}</p>}
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
                     {s.collectionType === 'dtt' && (
                       <span className="text-sm font-black px-2.5 py-1 rounded-lg tabular" style={{ background: rateColor(s.rate, s.criterion) + '18', color: rateColor(s.rate, s.criterion) }}>
                         {s.rate.toFixed(1)}%
                       </span>
                     )}
+                    {isSupervisor && (
+                      s.reviewedAt ? (
+                        <button onClick={() => unmarkReviewed(s.id)} title="Desfazer revisão" className="text-emerald-500 hover:text-emerald-700 transition-colors p-1">
+                          <CheckCircle2 size={15} />
+                        </button>
+                      ) : (
+                        <button onClick={() => { setReviewing(s.id); setReviewDraft(s.supervisorNotes) }} title="Revisar sessão" className="text-slate-300 hover:text-emerald-500 transition-colors p-1">
+                          <CheckCircle2 size={15} />
+                        </button>
+                      )
+                    )}
+                    <button onClick={() => { setEditingNotes(s.id); setNotesDraft(s.notes) }} className="text-slate-300 hover:text-primary transition-colors p-1">
+                      <Pencil size={13} />
+                    </button>
                     <button onClick={() => handleDelete(s.id)} className="text-slate-300 hover:text-red-400 transition-colors p-1">
                       <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
+                {reviewing === s.id && (
+                  <div className="mt-2 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5">
+                    <p className="text-xs font-semibold text-emerald-800 mb-1.5">Nota de supervisão clínica</p>
+                    <div className="flex items-start gap-2">
+                      <textarea
+                        autoFocus value={reviewDraft} onChange={e => setReviewDraft(e.target.value)} rows={2}
+                        placeholder="Feedback clínico, ajustes de procedimento, orientações ao técnico…"
+                        className="flex-1 border border-emerald-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
+                      />
+                      <div className="flex flex-col gap-1">
+                        <button onClick={() => saveReview(s.id)} title="Marcar revisado" className="text-white bg-emerald-600 p-1.5 rounded-lg hover:bg-emerald-700"><Check size={16} /></button>
+                        <button onClick={() => setReviewing(null)} className="text-slate-400 p-1.5 hover:bg-slate-100 rounded-lg"><X size={16} /></button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {editingNotes === s.id && (
+                  <div className="mt-2 flex items-start gap-2">
+                    <textarea
+                      autoFocus value={notesDraft} onChange={e => setNotesDraft(e.target.value)} rows={2}
+                      placeholder="Observações da sessão…"
+                      className="flex-1 border border-primary rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                    />
+                    <div className="flex flex-col gap-1">
+                      <button onClick={() => saveNotes(s.id)} className="text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg"><Check size={16} /></button>
+                      <button onClick={() => setEditingNotes(null)} className="text-slate-400 p-1.5 hover:bg-slate-100 rounded-lg"><X size={16} /></button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

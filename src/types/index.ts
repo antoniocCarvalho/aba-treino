@@ -32,9 +32,14 @@ export interface Session {
   phase: Phase
   promptMode: PromptMode
   collectionType: CollectionType
+  // supervisão
+  reviewedAt: string | null
+  reviewedBy: string | null
+  supervisorNotes: string
   // raw IDs for DB operations
   _patientId?: string
   _programId?: string
+  _psychologistId?: string
 }
 
 export interface ActiveSession {
@@ -48,13 +53,19 @@ export interface ActiveSession {
   startTs: number
 }
 
+export type Role = 'bcba' | 'rbt'
+
 export interface Profile {
   id: string
   full_name: string
   crp: string
+  email?: string
+  role?: Role
+  supervisor_id?: string | null
 }
 
 export interface Patient {
+  id?: string
   name: string
   sessions: Session[]
   meanRate: number
@@ -63,6 +74,7 @@ export interface Patient {
 }
 
 export interface PatientProgram {
+  id?: string
   name: string
   sessions: Session[]
   meanRate: number

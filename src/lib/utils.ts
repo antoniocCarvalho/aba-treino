@@ -22,8 +22,12 @@ export function normalizeSession(s: any) {
     phase: s.phase ?? 'acquisition',
     promptMode: s.prompt_mode ?? 'simple',
     collectionType: s.collection_type ?? 'dtt',
+    reviewedAt: s.reviewed_at ?? null,
+    reviewedBy: s.reviewed_by ?? null,
+    supervisorNotes: s.supervisor_notes ?? '',
     _patientId: s.patient?.id,
     _programId: s.program?.id,
+    _psychologistId: s.psychologist_id,
   }
 }
 

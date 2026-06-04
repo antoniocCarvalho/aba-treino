@@ -9,6 +9,7 @@ import { ReportPage } from './pages/ReportPage'
 import { Header } from './components/layout/Header'
 import { BottomNav } from './components/layout/BottomNav'
 import { Toast } from './components/ui/Toast'
+import { DraftRecoveryBanner } from './components/session/DraftRecoveryBanner'
 
 export default function App() {
   const { user, loading, setUser, setLoading, fetchProfile, fetchSessions, dataLoading } = useAppStore()
@@ -48,6 +49,7 @@ export default function App() {
       <Header />
       <main className="max-w-2xl mx-auto px-4 pt-16 pb-nav">
         <div className="py-4">
+          {tab !== 'session' && <DraftRecoveryBanner onRestore={() => setTab('session')} />}
           {pages[tab]}
         </div>
       </main>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, ChevronRight, Plus } from 'lucide-react'
+import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { Card } from '../components/ui/Card'
@@ -33,6 +33,7 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
       const sorted = [...pss].sort((a, b) => a.timestamp - b.timestamp)
       const crit = sorted[sorted.length - 1]?.criterion ?? 80
       return {
+        id: pss.find(s => s._programId)?._programId,
         name: prog, sessions: pss,
         meanRate: pss.reduce((a, s) => a + s.rate, 0) / pss.length,
         streak: computeStreak(pss, crit),
@@ -43,7 +44,7 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
 
     const meanRate = ss.reduce((a, s) => a + s.rate, 0) / ss.length
     const lastDate = ss.reduce((best, s) => s.timestamp > (best?.timestamp ?? 0) ? s : best, ss[0])?.date ?? '—'
-    return { name, sessions: ss, meanRate, lastDate, programs: programs.sort((a, b) => b.meanRate - a.meanRate) }
+    return { id: ss.find(s => s._patientId)?._patientId, name, sessions: ss, meanRate, lastDate, programs: programs.sort((a, b) => b.meanRate - a.meanRate) }
   }).filter(p => !query || p.name.toLowerCase().includes(query.toLowerCase()))
 
   if (!sessions.length) {
@@ -102,6 +103,12 @@ function Avatar({ name }: { name: string }) {
 
 function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onClose: () => void; onNavigate: (t: string) => void }) {
   const { updateConfig, setPanel } = useSessionStore()
+  const { renamePatient, deletePatient, renameProgram, deleteProgram } = useAppStore()
+
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState(patient.name)
+  const [editingProg, setEditingProg] = useState<string | null>(null)
+  const [progDraft, setProgDraft] = useState('')
 
   function startSessionFor(prog?: PatientProgram) {
     updateConfig({ student: patient.name, program: prog?.name ?? '', criterion: prog?.criterion ?? 80 })
@@ -110,18 +117,62 @@ function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onCl
     onNavigate('session')
   }
 
+  async function savePatientName() {
+    if (!patient.id) return
+    const ok = await renamePatient(patient.id, nameDraft)
+    if (ok) { setEditingName(false); onClose() }
+  }
+
+  async function handleDeletePatient() {
+    if (!patient.id) return
+    if (!confirm(`Excluir "${patient.name}" e TODAS as suas sessões? Esta ação é irreversível.`)) return
+    const ok = await deletePatient(patient.id)
+    if (ok) onClose()
+  }
+
+  async function saveProgName(progId: string) {
+    const ok = await renameProgram(progId, progDraft)
+    if (ok) { setEditingProg(null); onClose() }
+  }
+
+  async function handleDeleteProgram(prog: PatientProgram) {
+    if (!prog.id) return
+    if (!confirm(`Excluir o programa "${prog.name}" e suas ${prog.sessions.length} sessões?`)) return
+    const ok = await deleteProgram(prog.id)
+    if (ok && patient.programs.length === 1) onClose()
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
       <div className="relative w-full bg-white rounded-t-3xl max-h-[88vh] overflow-y-auto pb-6" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-4" />
         <div className="px-5">
+          {/* Header com edição de nome */}
           <div className="flex items-center gap-3 mb-5">
             <Avatar name={patient.name} />
-            <div>
-              <h2 className="text-lg font-black text-slate-900">{patient.name}</h2>
-              <p className="text-xs text-slate-400">{patient.sessions.length} sessões · {patient.programs.length} programas · média {patient.meanRate.toFixed(1)}%</p>
-            </div>
+            {editingName ? (
+              <div className="flex-1 flex items-center gap-2">
+                <input
+                  autoFocus value={nameDraft} onChange={e => setNameDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') savePatientName(); if (e.key === 'Escape') setEditingName(false) }}
+                  className="flex-1 border border-primary rounded-lg px-3 py-1.5 text-base font-bold focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <button onClick={savePatientName} className="text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg"><Check size={18} /></button>
+                <button onClick={() => { setEditingName(false); setNameDraft(patient.name) }} className="text-slate-400 p-1.5 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-black text-slate-900">{patient.name}</h2>
+                  <p className="text-xs text-slate-400">{patient.sessions.length} sessões · {patient.programs.length} programas · média {patient.meanRate.toFixed(1)}%</p>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => { setNameDraft(patient.name); setEditingName(true) }} className="text-slate-400 hover:text-primary p-2 hover:bg-slate-50 rounded-lg"><Pencil size={15} /></button>
+                  <button onClick={handleDeletePatient} className="text-slate-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
+                </div>
+              </div>
+            )}
           </div>
 
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Programas</p>
@@ -129,14 +180,33 @@ function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onCl
           {patient.programs.map(prog => {
             const pdiList = prog.sessions.filter(s => s.pdi !== null).map(s => s.pdi!)
             const pdiMean = pdiList.length ? pdiList.reduce((a, b) => a + b, 0) / pdiList.length : null
+            const isEditing = editingProg === prog.id
             return (
               <div key={prog.name} className="border border-slate-100 rounded-2xl p-4 mb-3">
                 <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="font-bold text-slate-900">{prog.name}</p>
-                    <p className="text-xs text-slate-400">{prog.sessions.length} sessões · última: {prog.sessions.reduce((a, b) => a.timestamp > b.timestamp ? a : b).date}</p>
-                  </div>
-                  <StatusBadge status={prog.status} />
+                  {isEditing ? (
+                    <div className="flex-1 flex items-center gap-2">
+                      <input
+                        autoFocus value={progDraft} onChange={e => setProgDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveProgName(prog.id!); if (e.key === 'Escape') setEditingProg(null) }}
+                        className="flex-1 border border-primary rounded-lg px-2.5 py-1.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <button onClick={() => saveProgName(prog.id!)} className="text-emerald-600 p-1"><Check size={16} /></button>
+                      <button onClick={() => setEditingProg(null)} className="text-slate-400 p-1"><X size={16} /></button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-900 truncate">{prog.name}</p>
+                        <p className="text-xs text-slate-400">{prog.sessions.length} sessões · última: {prog.sessions.reduce((a, b) => a.timestamp > b.timestamp ? a : b).date}</p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <StatusBadge status={prog.status} />
+                        <button onClick={() => { setProgDraft(prog.name); setEditingProg(prog.id ?? null) }} className="text-slate-300 hover:text-primary p-1"><Pencil size={13} /></button>
+                        <button onClick={() => handleDeleteProgram(prog)} className="text-slate-300 hover:text-red-500 p-1"><Trash2 size={13} /></button>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-2 mb-3">
                   <Metric label="Média" value={`${prog.meanRate.toFixed(1)}%`} color={rateColor(prog.meanRate, prog.criterion)} />
