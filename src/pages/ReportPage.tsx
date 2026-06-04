@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell } from 'recharts'
 import { Printer, Download, FileSpreadsheet } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
-import { computeStatus, computeStreak, movingAverage, trendArrow, linearRegression, rateColor, PHASE_LABEL, formatDuration } from '../lib/aba'
+import { computeStatus, computeStreak, movingAverage, trendArrow, linearRegression, rateColor, PHASE_LABEL } from '../lib/aba'
 import { exportSessionsCSV, exportSessionsJSON, dateStamp } from '../lib/export'
 import { DOMAIN_LABEL, TERM_LABEL, STATUS_LABEL } from '../lib/goals'
 import { Card } from '../components/ui/Card'
@@ -248,20 +248,21 @@ export function ReportPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead><tr className="text-slate-400 border-b border-slate-100">
-                  {['Data','Programa','Tent.','Taxa','IDI','Fase','Dur.'].map(h => <th key={h} className="pb-2 font-semibold text-left pr-2">{h}</th>)}
+                  {['Data','Programa','Reg.','Taxa','IDI','Fase'].map(h => <th key={h} className="pb-2 font-semibold text-left pr-2">{h}</th>)}
                 </tr></thead>
                 <tbody>
-                  {[...filtered].reverse().slice(0, 20).map((s, i) => (
+                  {[...filtered].reverse().slice(0, 20).map((s, i) => {
+                    const hasRate = s.collectionType === 'dtt' || s.collectionType === 'task_analysis' || s.collectionType === 'interval'
+                    return (
                     <tr key={s.id} className={i%2===0?'bg-slate-50/50':''}>
                       <td className="py-1.5 pr-2 text-slate-600">{s.date}</td>
                       <td className="py-1.5 pr-2 font-medium text-slate-800 max-w-20 truncate">{s.program}</td>
                       <td className="py-1.5 pr-2 text-center">{s.trials}</td>
-                      <td className="py-1.5 pr-2 font-bold text-center" style={{ color: rateColor(s.rate, s.criterion) }}>{s.collectionType==='dtt'?`${s.rate.toFixed(1)}%`:'—'}</td>
+                      <td className="py-1.5 pr-2 font-bold text-center" style={{ color: rateColor(s.rate, s.criterion) }}>{hasRate ? `${s.rate.toFixed(1)}%` : '—'}</td>
                       <td className="py-1.5 pr-2 text-center text-purple-600">{s.pdi !== null ? `${s.pdi.toFixed(0)}%` : '—'}</td>
                       <td className="py-1.5 pr-2 text-slate-500">{PHASE_LABEL[s.phase]?.slice(0,4) ?? '—'}</td>
-                      <td className="py-1.5 text-slate-400">{formatDuration(s.duration)}</td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>
