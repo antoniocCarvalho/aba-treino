@@ -1,18 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import Anthropic from '@anthropic-ai/sdk'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Função serverless (Vercel) — gera relatório de progresso ABA por IA.
-// A chave ANTHROPIC_API_KEY fica SÓ no servidor (variável de ambiente da Vercel),
-// nunca é exposta ao navegador. O frontend chama POST /api/generate-report.
+// Usa a API gratuita do Google Gemini. A chave GEMINI_API_KEY fica SÓ no servidor
+// (variável de ambiente da Vercel), nunca é exposta ao navegador.
+// Crie a chave grátis em https://aistudio.google.com/apikey
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Permite até 60s de execução (geração pode levar alguns segundos).
 export const config = { maxDuration: 60 }
 
-const MODEL = 'claude-opus-4-8' // troque por 'claude-sonnet-4-6' para reduzir custo
+// Modelo gratuito e rápido. Alternativas: 'gemini-1.5-flash', 'gemini-2.5-flash'.
+const MODEL = 'gemini-2.0-flash'
 
-// Persona + instruções fixas → bom candidato a prompt caching (prefixo estável).
 const SYSTEM_PROMPT = `Você é um analista do comportamento (BCBA) experiente, redigindo relatórios de progresso clínico em Terapia ABA (Análise do Comportamento Aplicada) em português do Brasil.
 
 Sua tarefa é transformar os dados quantitativos de sessões em um relatório profissional, claro e útil — adequado para famílias, equipe clínica e convênios.
@@ -59,9 +58,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Método não permitido' })
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
-    return res.status(500).json({ error: 'Servidor sem ANTHROPIC_API_KEY configurada' })
+    return res.status(500).json({ error: 'Servidor sem GEMINI_API_KEY configurada' })
   }
 
   let body: ReportRequest
@@ -75,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Dados insuficientes: informe aluno e ao menos uma sessão' })
   }
 
-  // Limita o volume para conter custo/latência (últimas 60 sessões)
+  // Limita o volume para conter latência (últimas 60 sessões)
   const sessions = body.sessions.slice(-60)
 
   const userContent = `Gere o relatório de progresso para o paciente abaixo, em português do Brasil.
@@ -96,28 +95,39 @@ ${JSON.stringify(
 Notas sobre os campos: "rate" = taxa de acertos (%); "pdi" = Índice de Independência (%); "phase" = fase do programa (baseline/acquisition/maintenance/generalization); "collectionType" = tipo de coleta; "criterion" = critério de maestria (%); "status" = classificação automática do programa.`
 
   try {
-    const client = new Anthropic({ apiKey })
-
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 3000,
-      // Persona estável marcada para cache (prefixo reaproveitável entre chamadas).
-      system: [
-        { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-      ],
-      messages: [{ role: 'user', content: userContent }],
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: userContent }] }],
+        generationConfig: { temperature: 0.6, maxOutputTokens: 3000 },
+      }),
     })
 
-    const report = response.content
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { text: string }).text)
-      .join('\n')
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '')
+      console.error('Gemini erro:', resp.status, detail)
+      return res.status(resp.status >= 400 && resp.status < 600 ? resp.status : 500)
+        .json({ error: 'Falha ao gerar o relatório. Verifique a chave e tente novamente.' })
+    }
+
+    const data = await resp.json()
+    const candidate = data?.candidates?.[0]
+    const report: string = (candidate?.content?.parts ?? [])
+      .map((p: { text?: string }) => p.text ?? '')
+      .join('')
       .trim()
 
-    return res.status(200).json({ report, usage: response.usage })
+    if (!report) {
+      const reason = candidate?.finishReason || data?.promptFeedback?.blockReason || 'desconhecido'
+      return res.status(502).json({ error: `A IA não retornou conteúdo (motivo: ${reason}).` })
+    }
+
+    return res.status(200).json({ report })
   } catch (e: any) {
     console.error('Erro ao gerar relatório:', e?.message || e)
-    const status = e?.status && e.status >= 400 && e.status < 600 ? e.status : 500
-    return res.status(status).json({ error: 'Falha ao gerar o relatório. Tente novamente.' })
+    return res.status(500).json({ error: 'Falha ao gerar o relatório. Tente novamente.' })
   }
 }
