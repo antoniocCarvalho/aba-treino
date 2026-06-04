@@ -1,8 +1,13 @@
 import { create } from 'zustand'
-import type { ActiveSession, TrialEntry, DurEntry, AbcEntry, Phase, PromptMode, CollectionType } from '../types'
+import type { ActiveSession, TrialEntry, DurEntry, AbcEntry, TrialType, Phase, PromptMode, CollectionType, IntervalKind } from '../types'
 
 const DRAFT_KEY = 'aba_draft_v1'
 const DRAFT_MAX_AGE = 2 * 60 * 60 * 1000 // 2h
+
+const SCORE: Record<string, number> = {
+  IND: 1.0, PR: 0.5, ERR: 0.0,
+  I: 1.0, V: 0.83, G: 0.67, M: 0.50, PP: 0.33, FP: 0.17,
+}
 
 interface DraftPayload {
   active: ActiveSession
@@ -10,6 +15,9 @@ interface DraftPayload {
   freqCount: number
   durLog: DurEntry[]
   abcLog: AbcEntry[]
+  taScores: Record<number, TrialType>
+  intervalMarks: boolean[]
+  intervalCurrent: number
   timerSecs: number
   savedAt: number
 }
@@ -23,6 +31,14 @@ interface SessionState {
   durRunning: boolean
   durStart: number | null
   abcLog: AbcEntry[]
+  // Análise de Tarefa
+  taScores: Record<number, TrialType>
+  // Registro por Intervalo
+  intervalMarks: boolean[]
+  intervalCurrent: number
+  intervalRunning: boolean
+  intervalStart: number | null
+  intervalRemaining: number
   timerSecs: number
   durTimerDisplay: string
   // config form (pre-session)
@@ -34,11 +50,19 @@ interface SessionState {
     promptMode: PromptMode
     phase: Phase
     collectionType: CollectionType
+    taStepsText: string
+    intervalSeconds: number
+    intervalCount: number
+    intervalKind: IntervalKind
   }
   setPanel: (p: 'config' | 'recording' | 'result') => void
   updateConfig: (updates: Partial<SessionState['config']>) => void
   startSession: () => void
   recordTrial: (type: string) => void
+  scoreTaStep: (index: number, type: TrialType) => void
+  startIntervalTimer: () => void
+  toggleCurrentInterval: () => void
+  tickIntervalTimer: () => void
   undoByType: () => void
   incrementFreq: () => void
   toggleDuration: () => void
@@ -47,7 +71,6 @@ interface SessionState {
   resetSession: () => void
   tickTimer: () => void
   tickDurTimer: () => void
-  // draft recovery
   restoreDraft: () => void
   discardDraft: () => void
 }
@@ -55,14 +78,17 @@ interface SessionState {
 const DEFAULT_CONFIG = {
   student: '', program: '', plannedTrials: 10, criterion: 80,
   promptMode: 'simple' as PromptMode, phase: 'acquisition' as Phase, collectionType: 'dtt' as CollectionType,
+  taStepsText: '', intervalSeconds: 10, intervalCount: 12, intervalKind: 'partial' as IntervalKind,
 }
 
 // ── Draft persistence helpers ────────────────────────────────────────────────
-function persistDraft(s: Pick<SessionState, 'active' | 'log' | 'freqCount' | 'durLog' | 'abcLog' | 'timerSecs'>) {
+function persistDraft(s: SessionState) {
   if (!s.active) return
   const payload: DraftPayload = {
     active: s.active, log: s.log, freqCount: s.freqCount,
-    durLog: s.durLog, abcLog: s.abcLog, timerSecs: s.timerSecs, savedAt: Date.now(),
+    durLog: s.durLog, abcLog: s.abcLog,
+    taScores: s.taScores, intervalMarks: s.intervalMarks, intervalCurrent: s.intervalCurrent,
+    timerSecs: s.timerSecs, savedAt: Date.now(),
   }
   try { localStorage.setItem(DRAFT_KEY, JSON.stringify(payload)) } catch { /* quota */ }
 }
@@ -90,6 +116,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   durRunning: false,
   durStart: null,
   abcLog: [],
+  taScores: {},
+  intervalMarks: [],
+  intervalCurrent: 0,
+  intervalRunning: false,
+  intervalStart: null,
+  intervalRemaining: 0,
   timerSecs: 0,
   durTimerDisplay: '00:00',
   config: { ...DEFAULT_CONFIG },
@@ -101,24 +133,33 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   startSession: () => {
     const { config } = get()
     clearDraft()
+    const taSteps = config.taStepsText.split('\n').map(s => s.trim()).filter(Boolean)
+    const active: ActiveSession = {
+      student: config.student, program: config.program,
+      plannedTrials: config.plannedTrials, criterion: config.criterion,
+      promptMode: config.promptMode, phase: config.phase, collectionType: config.collectionType,
+      startTs: Date.now(),
+      ...(config.collectionType === 'task_analysis' ? { taSteps } : {}),
+      ...(config.collectionType === 'interval' ? {
+        intervalSeconds: config.intervalSeconds, intervalCount: config.intervalCount, intervalKind: config.intervalKind,
+      } : {}),
+    }
     set({
-      active: { ...config, startTs: Date.now() },
-      panel: 'recording',
-      log: [], freqCount: 0, durLog: [],
-      durRunning: false, durStart: null,
-      abcLog: [], timerSecs: 0, durTimerDisplay: '00:00',
+      active, panel: 'recording',
+      log: [], freqCount: 0, durLog: [], durRunning: false, durStart: null, abcLog: [],
+      taScores: {},
+      intervalMarks: config.collectionType === 'interval' ? Array(config.intervalCount).fill(false) : [],
+      intervalCurrent: 0, intervalRunning: false, intervalStart: null,
+      intervalRemaining: config.intervalSeconds,
+      timerSecs: 0, durTimerDisplay: '00:00',
     })
   },
 
   recordTrial: (type) => {
-    const SCORE: Record<string, number> = {
-      IND: 1.0, PR: 0.5, ERR: 0.0,
-      I: 1.0, V: 0.83, G: 0.67, M: 0.50, PP: 0.33, FP: 0.17,
-    }
     const { active, log } = get()
     if (!active) return
     if (log.length >= active.plannedTrials) return
-    const newLog = [...log, { type: type as any, score: SCORE[type] ?? 0 }]
+    const newLog = [...log, { type: type as TrialType, score: SCORE[type] ?? 0 }]
     set({ log: newLog })
     persistDraft(get())
     if (newLog.length >= active.plannedTrials) {
@@ -126,14 +167,65 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
+  // ── Análise de Tarefa: pontua um passo ──
+  scoreTaStep: (index, type) => {
+    set((s) => ({ taScores: { ...s.taScores, [index]: type } }))
+    persistDraft(get())
+  },
+
+  // ── Registro por Intervalo ──
+  startIntervalTimer: () => {
+    const { active } = get()
+    if (!active) return
+    set({ intervalRunning: true, intervalStart: Date.now(), intervalRemaining: active.intervalSeconds ?? 10 })
+  },
+
+  toggleCurrentInterval: () => {
+    set((s) => {
+      const marks = [...s.intervalMarks]
+      marks[s.intervalCurrent] = !marks[s.intervalCurrent]
+      return { intervalMarks: marks }
+    })
+    persistDraft(get())
+  },
+
+  tickIntervalTimer: () => {
+    const { active, intervalRunning, intervalStart, intervalCurrent, intervalMarks } = get()
+    if (!active || !intervalRunning || intervalStart === null) return
+    const len = active.intervalSeconds ?? 10
+    const elapsed = Math.floor((Date.now() - intervalStart) / 1000)
+    const remaining = len - elapsed
+    if (remaining > 0) {
+      set({ intervalRemaining: remaining })
+      return
+    }
+    // Intervalo encerrado → avança
+    const next = intervalCurrent + 1
+    if (navigator.vibrate) navigator.vibrate(60)
+    if (next >= (active.intervalCount ?? intervalMarks.length)) {
+      set({ intervalRunning: false, intervalStart: null, intervalRemaining: 0 })
+      persistDraft(get())
+      setTimeout(() => get().finishSession(), 300)
+    } else {
+      set({ intervalCurrent: next, intervalStart: Date.now(), intervalRemaining: len })
+      persistDraft(get())
+    }
+  },
+
   undoByType: () => {
-    const { active, log, freqCount, durLog, abcLog } = get()
+    const { active, log, freqCount, durLog, abcLog, taScores } = get()
     if (!active) return
     switch (active.collectionType) {
       case 'dtt':       if (log.length)       set({ log: log.slice(0, -1) }); break
       case 'frequency': if (freqCount > 0)    set({ freqCount: freqCount - 1 }); break
       case 'duration':  if (durLog.length)    set({ durLog: durLog.slice(0, -1) }); break
       case 'abc':       if (abcLog.length)    set({ abcLog: abcLog.slice(0, -1) }); break
+      case 'task_analysis': {
+        const keys = Object.keys(taScores).map(Number)
+        if (keys.length) { const last = Math.max(...keys); const c = { ...taScores }; delete c[last]; set({ taScores: c }) }
+        break
+      }
+      case 'interval': get().toggleCurrentInterval(); return
     }
     persistDraft(get())
   },
@@ -163,12 +255,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const { durRunning, durStart, durLog } = get()
     if (durRunning) {
       const ms = Date.now() - (durStart ?? Date.now())
-      set({
-        durRunning: false, durStart: null,
-        durLog: [...durLog, { start: durStart!, end: Date.now(), ms }],
-      })
+      set({ durRunning: false, durStart: null, durLog: [...durLog, { start: durStart!, end: Date.now(), ms }] })
     }
-    set({ panel: 'result' })
+    set({ panel: 'result', intervalRunning: false })
     persistDraft(get())
   },
 
@@ -177,6 +266,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       active: null, panel: 'config',
       log: [], freqCount: 0, durLog: [], durRunning: false, durStart: null, abcLog: [],
+      taScores: {}, intervalMarks: [], intervalCurrent: 0, intervalRunning: false, intervalStart: null, intervalRemaining: 0,
       timerSecs: 0, durTimerDisplay: '00:00',
       config: { ...DEFAULT_CONFIG },
     })
@@ -198,8 +288,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (!d) return
     set({
       active: d.active,
-      panel: d.active.collectionType === 'dtt' && d.log.length >= d.active.plannedTrials ? 'result' : 'recording',
+      panel: 'recording',
       log: d.log, freqCount: d.freqCount, durLog: d.durLog, abcLog: d.abcLog,
+      taScores: d.taScores ?? {},
+      intervalMarks: d.intervalMarks ?? [], intervalCurrent: d.intervalCurrent ?? 0,
+      intervalRunning: false, intervalStart: null, intervalRemaining: d.active.intervalSeconds ?? 0,
       durRunning: false, durStart: null, durTimerDisplay: '00:00',
       timerSecs: d.timerSecs,
     })

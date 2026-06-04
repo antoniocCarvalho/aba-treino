@@ -5,10 +5,12 @@ import { DttFull } from './DttFull'
 import { FrequencyRecording } from './FrequencyRecording'
 import { DurationRecording } from './DurationRecording'
 import { AbcRecording } from './AbcRecording'
+import { TaskAnalysisRecording } from './TaskAnalysisRecording'
+import { IntervalRecording } from './IntervalRecording'
 import { PHASE_LABEL, rateColor } from '../../lib/aba'
 
 export function SessionRecording() {
-  const { active, log, freqCount, durLog, abcLog, timerSecs, undoByType, finishSession } = useSessionStore()
+  const { active, log, freqCount, durLog, abcLog, taScores, intervalMarks, timerSecs, undoByType, finishSession } = useSessionStore()
   if (!active) return null
 
   const timerDisplay = `${String(Math.floor(timerSecs / 60)).padStart(2,'0')}:${String(timerSecs % 60).padStart(2,'0')}`
@@ -16,6 +18,17 @@ export function SessionRecording() {
   const nInd = log.filter(t => t.type === 'IND' || t.type === 'I').length
   const nPr  = log.filter(t => t.type !== 'IND' && t.type !== 'I' && t.type !== 'ERR').length
   const pdi  = (nInd + nPr) ? (nInd / (nInd + nPr)) * 100 : 0
+
+  // Métricas de Análise de Tarefa
+  const taSteps = active.taSteps ?? []
+  const taScoredVals = Object.values(taScores)
+  const taScore = taScoredVals.reduce((a, t) => a + (t === 'IND' || t === 'I' ? 1 : t === 'ERR' ? 0 : 0.5), 0)
+  const taRate = taScoredVals.length ? (taScore / taScoredVals.length) * 100 : 0
+  const taInd = taScoredVals.filter(t => t === 'IND' || t === 'I').length
+
+  // Métricas de Intervalo
+  const intOccurred = intervalMarks.filter(Boolean).length
+  const intRate = intervalMarks.length ? (intOccurred / intervalMarks.length) * 100 : 0
 
   return (
     <div className="space-y-3">
@@ -57,28 +70,47 @@ export function SessionRecording() {
             <MetricChip label="Acumulado" value={`${Math.round(durLog.reduce((a, d) => a + d.ms, 0) / 1000)}s`} />
             <MetricChip label="Sessão" value={timerDisplay} />
           </>
-        ) : (
+        ) : active.collectionType === 'abc' ? (
           <>
             <MetricChip label="Registros ABC" value={String(abcLog.length)} color="#5046E4" />
             <MetricChip label="Alta intensidade" value={String(abcLog.filter(r => r.intensidade === 'Intensa').length)} color="#DC2626" />
             <MetricChip label="Sessão" value={timerDisplay} />
           </>
+        ) : active.collectionType === 'task_analysis' ? (
+          <>
+            <MetricChip label="Passos" value={`${taScoredVals.length}/${taSteps.length}`} />
+            <MetricChip label="% Acertos" value={`${taRate.toFixed(0)}%`} color={rateColor(taRate, active.criterion)} />
+            <MetricChip label="Independentes" value={`${taInd}`} color="#059669" />
+          </>
+        ) : (
+          <>
+            <MetricChip label="Intervalos" value={`${intOccurred}/${intervalMarks.length}`} color="#5046E4" />
+            <MetricChip label="% Ocorrência" value={`${intRate.toFixed(0)}%`} color="#7C3AED" />
+            <MetricChip label="Tempo" value={timerDisplay} />
+          </>
         )}
       </div>
 
-      {/* Progress bar for DTT */}
+      {/* Progress bar para DTT e Tarefa */}
       {active.collectionType === 'dtt' && (
         <div className="bg-slate-200 rounded-full h-2 overflow-hidden">
           <div className="h-2 bg-primary rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (log.length / active.plannedTrials) * 100)}%` }} />
+        </div>
+      )}
+      {active.collectionType === 'task_analysis' && taSteps.length > 0 && (
+        <div className="bg-slate-200 rounded-full h-2 overflow-hidden">
+          <div className="h-2 bg-primary rounded-full transition-all duration-300" style={{ width: `${(taScoredVals.length / taSteps.length) * 100}%` }} />
         </div>
       )}
 
       {/* Recording UI */}
       {active.collectionType === 'dtt' && active.promptMode === 'simple' && <DttSimple />}
       {active.collectionType === 'dtt' && active.promptMode === 'full'   && <DttFull />}
-      {active.collectionType === 'frequency' && <FrequencyRecording />}
-      {active.collectionType === 'duration'  && <DurationRecording />}
-      {active.collectionType === 'abc'       && <AbcRecording />}
+      {active.collectionType === 'frequency'     && <FrequencyRecording />}
+      {active.collectionType === 'duration'      && <DurationRecording />}
+      {active.collectionType === 'abc'           && <AbcRecording />}
+      {active.collectionType === 'task_analysis' && <TaskAnalysisRecording />}
+      {active.collectionType === 'interval'      && <IntervalRecording />}
 
       {/* Actions */}
       <div className="grid grid-cols-2 gap-3 pt-1">

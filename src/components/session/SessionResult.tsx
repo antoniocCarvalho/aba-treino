@@ -8,7 +8,7 @@ import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 
 export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void }) {
-  const { active, log, freqCount, durLog, abcLog, resetSession } = useSessionStore()
+  const { active, log, freqCount, durLog, abcLog, taScores, intervalMarks, resetSession } = useSessionStore()
   const { user, sessions, commitSession } = useAppStore()
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
@@ -32,6 +32,20 @@ export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void 
   } else if (active.collectionType === 'duration') {
     trials = durLog.length
     ind = durLog.length
+  } else if (active.collectionType === 'task_analysis') {
+    const vals = Object.values(taScores)
+    ind = vals.filter(t => t === 'IND' || t === 'I').length
+    pr  = vals.filter(t => t !== 'IND' && t !== 'I' && t !== 'ERR').length
+    err = vals.filter(t => t === 'ERR').length
+    score = vals.reduce((a, t) => a + (t === 'IND' || t === 'I' ? 1 : t === 'ERR' ? 0 : 0.5), 0)
+    trials = vals.length
+    rate   = trials ? (score / trials) * 100 : 0
+    pdi    = (ind + pr) ? (ind / (ind + pr)) * 100 : null
+  } else if (active.collectionType === 'interval') {
+    const occurred = intervalMarks.filter(Boolean).length
+    trials = intervalMarks.length
+    ind = occurred
+    rate = trials ? (occurred / trials) * 100 : 0
   } else {
     // abc
     trials = abcLog.length
@@ -40,6 +54,9 @@ export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void 
 
   const duration = Math.round((Date.now() - active.startTs) / 1000)
 
+  // Tipos com taxa significativa (contam para maestria)
+  const hasRate = active.collectionType === 'dtt' || active.collectionType === 'task_analysis' || active.collectionType === 'interval'
+
   // Mastery streak projection
   const prevSess = sessions.filter(s => s.student === active.student && s.program === active.program)
   let prevStreak = 0
@@ -47,15 +64,30 @@ export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void 
   for (let i = sorted.length - 1; i >= 0; i--) {
     if (sorted[i].rate >= active.criterion) prevStreak++; else break
   }
-  const projStreak = active.collectionType === 'dtt' && rate >= active.criterion ? prevStreak + 1 : 0
+  const projStreak = hasRate && rate >= active.criterion ? prevStreak + 1 : 0
+
+  function buildLog() {
+    switch (active!.collectionType) {
+      case 'dtt': return log
+      case 'abc': return abcLog
+      case 'duration': return durLog
+      case 'frequency': return [{ count: freqCount }]
+      case 'task_analysis':
+        return (active!.taSteps ?? []).map((step, i) => ({
+          step, type: taScores[i] ?? 'ERR',
+          score: taScores[i] === 'IND' || taScores[i] === 'I' ? 1 : taScores[i] === 'ERR' || !taScores[i] ? 0 : 0.5,
+        }))
+      case 'interval':
+        return intervalMarks.map((occurred, index) => ({ index, occurred }))
+      default: return []
+    }
+  }
 
   async function handleSave() {
     if (!user || !active) return
     setSaving(true)
 
-    const finalStreak = active.collectionType === 'dtt'
-      ? (rate >= active.criterion ? prevStreak + 1 : 0)
-      : prevStreak
+    const finalStreak = hasRate ? (rate >= active.criterion ? prevStreak + 1 : 0) : prevStreak
 
     const payload: SessionPayload = {
       localId: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -65,10 +97,7 @@ export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void 
       trials, score: parseFloat(score.toFixed(2)), rate: parseFloat(rate.toFixed(2)),
       pdi: pdi !== null ? parseFloat(pdi.toFixed(1)) : null,
       ind, pr, err, duration, streak: finalStreak, notes,
-      log: active.collectionType === 'dtt' ? log
-         : active.collectionType === 'abc' ? abcLog
-         : active.collectionType === 'duration' ? durLog
-         : [{ count: freqCount }],
+      log: buildLog() as any,
       createdAt: Date.now(),
     }
 
@@ -90,11 +119,16 @@ export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void 
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <StatBox label="Tentativas" value={String(trials)} color="text-indigo-600" bg="bg-indigo-50" />
-          {active.collectionType === 'dtt' ? (
+          <StatBox
+            label={active.collectionType === 'task_analysis' ? 'Passos' : active.collectionType === 'interval' ? 'Intervalos' : 'Tentativas'}
+            value={String(trials)} color="text-indigo-600" bg="bg-indigo-50"
+          />
+          {hasRate ? (
             <>
-              <StatBox label="Taxa" value={`${rate.toFixed(1)}%`} color="text-purple-600" bg="bg-purple-50" />
-              <StatBox label="Independência" value={pdi !== null ? `${pdi.toFixed(0)}%` : '—'} color="text-emerald-600" bg="bg-emerald-50" />
+              <StatBox label={active.collectionType === 'interval' ? '% Ocorrência' : 'Taxa'} value={`${rate.toFixed(1)}%`} color="text-purple-600" bg="bg-purple-50" />
+              {active.collectionType !== 'interval'
+                ? <StatBox label="Independência" value={pdi !== null ? `${pdi.toFixed(0)}%` : '—'} color="text-emerald-600" bg="bg-emerald-50" />
+                : <StatBox label="Ocorrências" value={String(ind)} color="text-emerald-600" bg="bg-emerald-50" />}
             </>
           ) : (
             <StatBox label="Total acum." value={active.collectionType === 'duration' ? formatDuration(Math.round(durLog.reduce((a,d)=>a+d.ms,0)/1000)) : '—'} color="text-emerald-600" bg="bg-emerald-50" />
@@ -103,7 +137,7 @@ export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void 
         </div>
 
         {/* Mastery alert */}
-        {active.collectionType === 'dtt' && projStreak >= 2 && (
+        {hasRate && projStreak >= 2 && (
           <div className={`rounded-xl p-3 mb-4 text-center text-sm font-bold ${projStreak >= 3 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
             {projStreak >= 3 ? `🏆 Critério de Maestria Atingido! ${projStreak} sessões consecutivas ≥ ${active.criterion}%` : `⭐ Próximo da maestria! ${projStreak}/3 sessões ≥ ${active.criterion}%`}
           </div>

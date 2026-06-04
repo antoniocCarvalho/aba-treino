@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
-import { Users, TrendingUp, Award, AlertTriangle, CheckCircle2, CalendarDays } from 'lucide-react'
+import { Users, TrendingUp, Award, AlertTriangle, CheckCircle2, CalendarDays, RefreshCw, Globe } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { computeStatus, computeStreak, rateColor } from '../lib/aba'
 import type { Session } from '../types'
+
+const DAY = 24 * 60 * 60 * 1000
 
 interface Props { onNavigate: (tab: string) => void }
 
@@ -29,12 +31,24 @@ export function Dashboard({ onNavigate }: Props) {
     let mastered = 0
     const regressions: { student: string; program: string; rate: number }[] = []
     const approaching: { student: string; program: string; streak: number }[] = []
+    const maintenanceProbes: { student: string; program: string; days: number }[] = []
+    const generalizationProbes: { student: string; program: string }[] = []
+    const now = Date.now()
 
     Object.values(groups).forEach(({ student, program, ss }) => {
-      const crit = [...ss].sort((a, b) => a.timestamp - b.timestamp).slice(-1)[0]?.criterion ?? 80
+      const sorted = [...ss].sort((a, b) => a.timestamp - b.timestamp)
+      const crit = sorted[sorted.length - 1]?.criterion ?? 80
       const status = computeStatus(ss, crit)
-      const last = [...ss].sort((a, b) => a.timestamp - b.timestamp).slice(-1)[0]
-      if (status === 'mastered') mastered++
+      const last = sorted[sorted.length - 1]
+      if (status === 'mastered') {
+        mastered++
+        // Sonda de manutenção: dominado mas sem sessão há +14 dias e sem manutenção recente
+        const days = Math.floor((now - last.timestamp) / DAY)
+        const recentMaintenance = ss.some(s => s.phase === 'maintenance' && (now - s.timestamp) < 30 * DAY)
+        if (days >= 14 && !recentMaintenance) maintenanceProbes.push({ student, program, days })
+        // Sonda de generalização: nunca testado em generalização
+        if (!ss.some(s => s.phase === 'generalization')) generalizationProbes.push({ student, program })
+      }
       if (status === 'attention') regressions.push({ student, program, rate: last?.rate ?? 0 })
       if (status === 'approaching') approaching.push({ student, program, streak: computeStreak(ss, crit) })
     })
@@ -45,6 +59,8 @@ export function Dashboard({ onNavigate }: Props) {
       totalPatients: students.length, sessionsWeek, overallMean, mastered,
       regressions: regressions.sort((a, b) => a.rate - b.rate).slice(0, 4),
       approaching: approaching.slice(0, 3),
+      maintenanceProbes: maintenanceProbes.sort((a, b) => b.days - a.days).slice(0, 3),
+      generalizationProbes: generalizationProbes.slice(0, 3),
       pendingReviews,
     }
   }, [sessions, isSupervisor])
@@ -62,7 +78,7 @@ export function Dashboard({ onNavigate }: Props) {
       </div>
 
       {/* Alertas */}
-      {(data.regressions.length > 0 || data.approaching.length > 0 || data.pendingReviews > 0) && (
+      {(data.regressions.length > 0 || data.approaching.length > 0 || data.pendingReviews > 0 || data.maintenanceProbes.length > 0 || data.generalizationProbes.length > 0) && (
         <div className="bg-white rounded-2xl shadow-card border border-slate-100 p-4">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Alertas</p>
           <div className="space-y-2">
@@ -81,6 +97,24 @@ export function Dashboard({ onNavigate }: Props) {
                 icon={<AlertTriangle size={15} className="text-red-500" />}
                 bg="bg-red-50"
                 text={<><strong>{r.student}</strong> · {r.program} em regressão ({r.rate.toFixed(0)}%)</>}
+              />
+            ))}
+            {data.maintenanceProbes.map((m, i) => (
+              <AlertRow
+                key={'mnt' + i}
+                onClick={() => onNavigate('session')}
+                icon={<RefreshCw size={15} className="text-teal-500" />}
+                bg="bg-teal-50"
+                text={<><strong>{m.student}</strong> · {m.program} — sonda de manutenção devida (há {m.days} dias)</>}
+              />
+            ))}
+            {data.generalizationProbes.map((g, i) => (
+              <AlertRow
+                key={'gen' + i}
+                onClick={() => onNavigate('session')}
+                icon={<Globe size={15} className="text-cyan-500" />}
+                bg="bg-cyan-50"
+                text={<><strong>{g.student}</strong> · {g.program} — sugerida sonda de generalização</>}
               />
             ))}
             {data.approaching.map((a, i) => (
