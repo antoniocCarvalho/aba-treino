@@ -195,8 +195,8 @@ function ProgramLibraryModal({ onClose, onPick }: { onClose: () => void; onPick:
         </div>
 
         {/* Filtros de domínio */}
-        <div className="px-4 py-2 border-b border-slate-100 overflow-x-auto">
-          <div className="flex gap-1.5 w-max">
+        <div className="px-4 py-2 border-b border-slate-100">
+          <div className="flex flex-wrap gap-1.5">
             <button onClick={() => setFilter('all')} className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap ${filter === 'all' ? 'bg-primary text-white' : 'bg-slate-100 text-slate-600'}`}>Todos</button>
             {domains.map(d => (
               <button key={d} onClick={() => setFilter(d)} className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap ${filter === d ? 'bg-primary text-white' : 'bg-slate-100 text-slate-600'}`}>{DOMAIN_LABEL[d]}</button>
@@ -205,7 +205,7 @@ function ProgramLibraryModal({ onClose, onPick }: { onClose: () => void; onPick:
         </div>
 
         {/* Lista */}
-        <div className="overflow-y-auto p-4 space-y-2">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2">
           {items.map((t, i) => (
             <button key={i} onClick={() => onPick(t)} className="w-full text-left border border-slate-100 rounded-xl p-3 hover:border-primary hover:bg-primary/5 transition-all">
               <div className="flex items-center justify-between gap-2">

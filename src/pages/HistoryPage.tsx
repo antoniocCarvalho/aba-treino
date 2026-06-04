@@ -170,7 +170,7 @@ export function HistoryPage() {
                       )}
                     </div>
                     <p className="text-xs text-slate-500 truncate">{s.program}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{s.date} {s.time} · {s.trials} tent. · {formatDuration(s.duration)}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{s.date} {s.time} · {s.trials} reg.{s.collectionType === 'duration' && s.duration ? ` · ${formatDuration(s.duration)}` : ''}</p>
                     {editingNotes !== s.id && s.notes && <p className="text-xs text-slate-400 italic mt-0.5 truncate">💬 {s.notes}</p>}
                     {s.supervisorNotes && reviewing !== s.id && <p className="text-xs text-emerald-600 italic mt-0.5 truncate">👨‍⚕️ {s.supervisorNotes}</p>}
                   </div>

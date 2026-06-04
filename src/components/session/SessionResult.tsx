@@ -52,7 +52,11 @@ export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void 
     ind = abcLog.length
   }
 
-  const duration = Math.round((Date.now() - active.startTs) / 1000)
+  // Duração só é significativa no tipo "Duração" (soma dos episódios cronometrados).
+  // Demais tipos não usam tempo de sessão (registro pode ser feito após o atendimento).
+  const duration = active.collectionType === 'duration'
+    ? Math.round(durLog.reduce((a, d) => a + d.ms, 0) / 1000)
+    : 0
 
   // Tipos com taxa significativa (contam para maestria)
   const hasRate = active.collectionType === 'dtt' || active.collectionType === 'task_analysis' || active.collectionType === 'interval'
@@ -120,7 +124,7 @@ export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void 
 
         <div className="grid grid-cols-2 gap-3 mb-4">
           <StatBox
-            label={active.collectionType === 'task_analysis' ? 'Passos' : active.collectionType === 'interval' ? 'Intervalos' : 'Tentativas'}
+            label={active.collectionType === 'task_analysis' ? 'Passos' : active.collectionType === 'interval' ? 'Intervalos' : active.collectionType === 'duration' ? 'Episódios' : active.collectionType === 'abc' ? 'Registros' : 'Tentativas'}
             value={String(trials)} color="text-indigo-600" bg="bg-indigo-50"
           />
           {hasRate ? (
@@ -130,10 +134,11 @@ export function SessionResult({ onNavigate }: { onNavigate: (t: string) => void 
                 ? <StatBox label="Independência" value={pdi !== null ? `${pdi.toFixed(0)}%` : '—'} color="text-emerald-600" bg="bg-emerald-50" />
                 : <StatBox label="Ocorrências" value={String(ind)} color="text-emerald-600" bg="bg-emerald-50" />}
             </>
+          ) : active.collectionType === 'duration' ? (
+            <StatBox label="Tempo total" value={formatDuration(duration)} color="text-emerald-600" bg="bg-emerald-50" />
           ) : (
-            <StatBox label="Total acum." value={active.collectionType === 'duration' ? formatDuration(Math.round(durLog.reduce((a,d)=>a+d.ms,0)/1000)) : '—'} color="text-emerald-600" bg="bg-emerald-50" />
+            <StatBox label="Intensidade alta" value={String(abcLog.filter(r => r.intensidade === 'Intensa').length)} color="text-red-600" bg="bg-red-50" />
           )}
-          <StatBox label="Duração" value={formatDuration(duration)} color="text-amber-600" bg="bg-amber-50" />
         </div>
 
         {/* Mastery alert */}

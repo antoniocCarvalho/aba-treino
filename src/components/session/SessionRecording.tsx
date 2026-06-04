@@ -10,10 +10,9 @@ import { IntervalRecording } from './IntervalRecording'
 import { PHASE_LABEL, rateColor } from '../../lib/aba'
 
 export function SessionRecording() {
-  const { active, log, freqCount, durLog, abcLog, taScores, intervalMarks, timerSecs, undoByType, finishSession } = useSessionStore()
+  const { active, log, freqCount, durLog, abcLog, taScores, intervalMarks, undoByType, finishSession } = useSessionStore()
   if (!active) return null
 
-  const timerDisplay = `${String(Math.floor(timerSecs / 60)).padStart(2,'0')}:${String(timerSecs % 60).padStart(2,'0')}`
   const currentRate = log.length ? (log.reduce((a, t) => a + t.score, 0) / log.length) * 100 : 0
   const nInd = log.filter(t => t.type === 'IND' || t.type === 'I').length
   const nPr  = log.filter(t => t.type !== 'IND' && t.type !== 'I' && t.type !== 'ERR').length
@@ -38,20 +37,16 @@ export function SessionRecording() {
           <div>
             <p className="font-black text-base">{active.student}</p>
             <p className="text-sm opacity-80">{active.program}</p>
-            <div className="flex gap-1.5 mt-2 flex-wrap">
-              <span className="bg-white/20 text-xs font-semibold px-2 py-0.5 rounded-full">{PHASE_LABEL[active.phase]}</span>
-              <span className="bg-white/20 text-xs font-semibold px-2 py-0.5 rounded-full">Critério: {active.criterion}%</span>
-            </div>
           </div>
-          <div className="text-right">
-            <p className="text-2xl font-black tabular">{timerDisplay}</p>
-            <p className="text-xs opacity-70 mt-0.5">tempo</p>
+          <div className="flex gap-1.5 flex-wrap justify-end">
+            <span className="bg-white/20 text-xs font-semibold px-2 py-0.5 rounded-full">{PHASE_LABEL[active.phase]}</span>
+            <span className="bg-white/20 text-xs font-semibold px-2 py-0.5 rounded-full">Critério: {active.criterion}%</span>
           </div>
         </div>
       </div>
 
       {/* Metrics */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className={`grid gap-2 ${active.collectionType === 'dtt' || active.collectionType === 'task_analysis' ? 'grid-cols-3' : active.collectionType === 'frequency' ? 'grid-cols-1' : 'grid-cols-2'}`}>
         {active.collectionType === 'dtt' ? (
           <>
             <MetricChip label="Tentativas" value={`${log.length}/${active.plannedTrials}`} />
@@ -59,22 +54,16 @@ export function SessionRecording() {
             <MetricChip label="IDI" value={`${pdi.toFixed(0)}%`} color="#7C3AED" />
           </>
         ) : active.collectionType === 'frequency' ? (
-          <>
-            <MetricChip label="Ocorrências" value={String(freqCount)} color="#5046E4" />
-            <MetricChip label="Por minuto" value={timerSecs > 0 ? (freqCount / (timerSecs / 60)).toFixed(1) : '—'} />
-            <MetricChip label="Tempo" value={timerDisplay} />
-          </>
+          <MetricChip label="Ocorrências registradas" value={String(freqCount)} color="#5046E4" />
         ) : active.collectionType === 'duration' ? (
           <>
             <MetricChip label="Episódios" value={String(durLog.length)} color="#5046E4" />
-            <MetricChip label="Acumulado" value={`${Math.round(durLog.reduce((a, d) => a + d.ms, 0) / 1000)}s`} />
-            <MetricChip label="Sessão" value={timerDisplay} />
+            <MetricChip label="Tempo acumulado" value={`${Math.round(durLog.reduce((a, d) => a + d.ms, 0) / 1000)}s`} color="#059669" />
           </>
         ) : active.collectionType === 'abc' ? (
           <>
             <MetricChip label="Registros ABC" value={String(abcLog.length)} color="#5046E4" />
             <MetricChip label="Alta intensidade" value={String(abcLog.filter(r => r.intensidade === 'Intensa').length)} color="#DC2626" />
-            <MetricChip label="Sessão" value={timerDisplay} />
           </>
         ) : active.collectionType === 'task_analysis' ? (
           <>
@@ -86,7 +75,6 @@ export function SessionRecording() {
           <>
             <MetricChip label="Intervalos" value={`${intOccurred}/${intervalMarks.length}`} color="#5046E4" />
             <MetricChip label="% Ocorrência" value={`${intRate.toFixed(0)}%`} color="#7C3AED" />
-            <MetricChip label="Tempo" value={timerDisplay} />
           </>
         )}
       </div>
