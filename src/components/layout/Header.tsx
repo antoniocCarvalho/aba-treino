@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { LogOut, ChevronDown, ClipboardList, UserCog } from 'lucide-react'
+import { LogOut, ChevronDown, ClipboardList, UserCog, HelpCircle } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { SettingsModal } from '../SettingsModal'
 
-export function Header() {
+export function Header({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const { user, profile, logout } = useAppStore()
   const active = useSessionStore((s) => s.active)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -26,6 +26,9 @@ export function Header() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => onNavigate?.('guide')} title="Guia do profissional" className="text-slate-400 hover:text-primary p-1.5 rounded-lg hover:bg-slate-50 transition-colors">
+            <HelpCircle size={20} />
+          </button>
           {active && (
             <span className="bg-primary/10 text-primary text-xs font-semibold px-2.5 py-1 rounded-full">
               {active.student}
@@ -50,6 +53,12 @@ export function Header() {
                     {profile?.crp && <p className="text-xs text-slate-400 mt-0.5">CRP {profile.crp}</p>}
                     <span className="inline-block mt-1.5 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{roleLabel}</span>
                   </div>
+                  <button
+                    onClick={() => { setMenuOpen(false); onNavigate?.('guide') }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <HelpCircle size={14} /> Guia do profissional
+                  </button>
                   <button
                     onClick={() => { setMenuOpen(false); setSettingsOpen(true) }}
                     className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"

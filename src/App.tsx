@@ -8,6 +8,7 @@ import { PatientsPage } from './pages/PatientsPage'
 import { SessionPage } from './pages/SessionPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { ReportPage } from './pages/ReportPage'
+import { GuidePage } from './pages/GuidePage'
 import { Header } from './components/layout/Header'
 import { BottomNav } from './components/layout/BottomNav'
 import { Toast } from './components/ui/Toast'
@@ -50,11 +51,12 @@ export default function App() {
     session:  <SessionPage onNavigate={setTab} />,
     history:  <HistoryPage />,
     report:   <ReportPage />,
+    guide:    <GuidePage />,
   }
 
   return (
     <div className="min-h-screen bg-[#F0F4FF]">
-      <Header />
+      <Header onNavigate={setTab} />
       {/* Faixa de status offline / fila pendente */}
       {(!online || pendingCount > 0) && (
         <div className={`fixed top-12 left-0 right-0 z-30 no-print ${!online ? 'bg-amber-500' : 'bg-indigo-500'} text-white text-xs font-semibold`}>
