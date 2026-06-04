@@ -37,6 +37,10 @@ interface AppState {
   unmarkReviewed: (id: string) => Promise<boolean>
   setRole: (role: 'bcba' | 'rbt') => Promise<boolean>
   linkSupervisor: (email: string) => Promise<boolean>
+  // conta / perfil
+  updateProfile: (updates: { full_name?: string; crp?: string }) => Promise<boolean>
+  changePassword: (newPassword: string) => Promise<boolean>
+  changeEmail: (newEmail: string) => Promise<boolean>
   // offline / persistência de sessão
   commitSession: (payload: SessionPayload) => Promise<void>
   syncPending: () => Promise<void>
@@ -296,6 +300,49 @@ export const useAppStore = create<AppState>((set, get) => ({
       return true
     } catch {
       get().showToast('Erro ao vincular supervisor', 'error')
+      return false
+    }
+  },
+
+  // ── Conta / perfil ────────────────────────────────────────────────────────
+  updateProfile: async (updates) => {
+    const uid = get().user?.id
+    if (!uid) return false
+    try {
+      const { error } = await supabase.from('profiles').update(updates).eq('id', uid)
+      if (error) throw error
+      set((st) => ({ profile: st.profile ? { ...st.profile, ...updates } : st.profile }))
+      get().showToast('Perfil atualizado', 'success')
+      return true
+    } catch {
+      get().showToast('Erro ao atualizar perfil', 'error')
+      return false
+    }
+  },
+
+  changePassword: async (newPassword) => {
+    if (newPassword.length < 6) { get().showToast('A senha deve ter ao menos 6 caracteres', 'warning'); return false }
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+      get().showToast('Senha alterada com sucesso', 'success')
+      return true
+    } catch (e: any) {
+      const msg = e?.message?.includes('should be different') ? 'A nova senha deve ser diferente da atual' : 'Erro ao alterar senha'
+      get().showToast(msg, 'error')
+      return false
+    }
+  },
+
+  changeEmail: async (newEmail) => {
+    try {
+      const { error } = await supabase.auth.updateUser({ email: newEmail.trim() })
+      if (error) throw error
+      get().showToast('Enviamos um link de confirmação ao novo e-mail', 'success')
+      return true
+    } catch (e: any) {
+      const msg = e?.message?.includes('already') ? 'Este e-mail já está em uso' : 'Erro ao alterar e-mail'
+      get().showToast(msg, 'error')
       return false
     }
   },
