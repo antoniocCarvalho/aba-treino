@@ -5,6 +5,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { Card } from '../components/ui/Card'
 import { StatusBadge } from '../components/ui/Badge'
 import { Dashboard } from '../components/Dashboard'
+import { TreatmentPlan } from '../components/TreatmentPlan'
 import { computeStatus, computeStreak, rateColor } from '../lib/aba'
 import { cls } from '../lib/utils'
 import type { Patient, PatientProgram } from '../types'
@@ -177,6 +178,13 @@ function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onCl
               </div>
             )}
           </div>
+
+          {/* Plano de Tratamento */}
+          {patient.id && (
+            <div className="mb-5">
+              <TreatmentPlan patientId={patient.id} />
+            </div>
+          )}
 
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Programas</p>
 

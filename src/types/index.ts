@@ -56,6 +56,22 @@ export interface ActiveSession {
 
 export type Role = 'bcba' | 'rbt'
 
+export type GoalDomain = 'comunicacao' | 'linguagem' | 'social' | 'brincar' | 'academico' | 'avd' | 'motor' | 'comportamento'
+export type GoalTerm = 'short' | 'long'
+export type GoalStatus = 'active' | 'achieved' | 'discontinued'
+
+export interface TreatmentGoal {
+  id: string
+  patient_id: string
+  title: string
+  domain: GoalDomain
+  description: string
+  term: GoalTerm
+  target_date: string | null
+  status: GoalStatus
+  created_at: string
+}
+
 export interface Profile {
   id: string
   full_name: string

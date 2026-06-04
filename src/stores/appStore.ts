@@ -2,13 +2,14 @@ import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { normalizeSession } from '../lib/utils'
 import { enqueue, dequeue, getQueue, type SessionPayload } from '../lib/offline'
-import type { Session, Profile } from '../types'
+import type { Session, Profile, TreatmentGoal } from '../types'
 import type { User } from '@supabase/supabase-js'
 
 interface AppState {
   user: User | null
   profile: Profile | null
   sessions: Session[]
+  goals: TreatmentGoal[]
   loading: boolean
   dataLoading: boolean
   pendingCount: number
@@ -39,6 +40,11 @@ interface AppState {
   // offline / persistência de sessão
   commitSession: (payload: SessionPayload) => Promise<void>
   syncPending: () => Promise<void>
+  // plano de tratamento
+  fetchGoals: () => Promise<void>
+  addGoal: (patientId: string, goal: Omit<TreatmentGoal, 'id' | 'patient_id' | 'created_at'>) => Promise<boolean>
+  updateGoal: (id: string, updates: Partial<TreatmentGoal>) => Promise<boolean>
+  deleteGoal: (id: string) => Promise<boolean>
 }
 
 // Converte um payload em uma Session otimista (exibida enquanto não sincroniza)
@@ -99,6 +105,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   profile: null,
   sessions: [],
+  goals: [],
   loading: true,
   dataLoading: false,
   pendingCount: getQueue().length,
@@ -351,5 +358,63 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
     if (synced > 0) get().showToast(`${synced} sessão(ões) sincronizada(s)`, 'success')
+  },
+
+  // ── Plano de tratamento ───────────────────────────────────────────────────
+  fetchGoals: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('treatment_goals')
+        .select('id, patient_id, title, domain, description, term, target_date, status, created_at')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      set({ goals: (data ?? []) as TreatmentGoal[] })
+    } catch (e) {
+      // tabela ainda não criada → ignora silenciosamente
+      console.warn('Plano de tratamento indisponível (rode a migration):', e)
+    }
+  },
+
+  addGoal: async (patientId, goal) => {
+    const uid = get().user?.id
+    if (!uid) return false
+    try {
+      const { data, error } = await supabase.from('treatment_goals')
+        .insert({ ...goal, patient_id: patientId, psychologist_id: uid })
+        .select('id, patient_id, title, domain, description, term, target_date, status, created_at')
+        .single()
+      if (error) throw error
+      set((st) => ({ goals: [data as TreatmentGoal, ...st.goals] }))
+      get().showToast('Objetivo adicionado', 'success')
+      return true
+    } catch {
+      get().showToast('Erro ao adicionar objetivo', 'error')
+      return false
+    }
+  },
+
+  updateGoal: async (id, updates) => {
+    try {
+      const { error } = await supabase.from('treatment_goals').update(updates).eq('id', id)
+      if (error) throw error
+      set((st) => ({ goals: st.goals.map((g) => g.id === id ? { ...g, ...updates } : g) }))
+      return true
+    } catch {
+      get().showToast('Erro ao atualizar objetivo', 'error')
+      return false
+    }
+  },
+
+  deleteGoal: async (id) => {
+    try {
+      const { error } = await supabase.from('treatment_goals').delete().eq('id', id)
+      if (error) throw error
+      set((st) => ({ goals: st.goals.filter((g) => g.id !== id) }))
+      get().showToast('Objetivo removido', 'success')
+      return true
+    } catch {
+      get().showToast('Erro ao remover objetivo', 'error')
+      return false
+    }
   },
 }))

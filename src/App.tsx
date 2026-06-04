@@ -14,7 +14,7 @@ import { Toast } from './components/ui/Toast'
 import { DraftRecoveryBanner } from './components/session/DraftRecoveryBanner'
 
 export default function App() {
-  const { user, loading, setUser, setLoading, fetchProfile, fetchSessions, dataLoading, syncPending, pendingCount } = useAppStore()
+  const { user, loading, setUser, setLoading, fetchProfile, fetchSessions, fetchGoals, dataLoading, syncPending, pendingCount } = useAppStore()
   const [tab, setTab] = useState('patients')
   const online = useOnline()
 
@@ -22,12 +22,12 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       setLoading(false)
-      if (session?.user) { fetchProfile(); fetchSessions().then(syncPending) }
+      if (session?.user) { fetchProfile(); fetchGoals(); fetchSessions().then(syncPending) }
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_ev, session) => {
       const prev = useAppStore.getState().user
       setUser(session?.user ?? null)
-      if (session?.user && !prev) { fetchProfile(); fetchSessions().then(syncPending) }
+      if (session?.user && !prev) { fetchProfile(); fetchGoals(); fetchSessions().then(syncPending) }
     })
     return () => subscription.unsubscribe()
   }, [])

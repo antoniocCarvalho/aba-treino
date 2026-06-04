@@ -4,11 +4,12 @@ import { Printer, Download, FileSpreadsheet } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { computeStatus, computeStreak, movingAverage, trendArrow, linearRegression, rateColor, PHASE_LABEL, formatDuration } from '../lib/aba'
 import { exportSessionsCSV, exportSessionsJSON, dateStamp } from '../lib/export'
+import { DOMAIN_LABEL, TERM_LABEL, STATUS_LABEL } from '../lib/goals'
 import { Card } from '../components/ui/Card'
 import { StatusBadge } from '../components/ui/Badge'
 
 export function ReportPage() {
-  const { sessions, profile } = useAppStore()
+  const { sessions, profile, goals } = useAppStore()
   const [student, setStudent] = useState('')
   const [program, setProgram] = useState('')
 
@@ -139,6 +140,29 @@ export function ReportPage() {
               <Kpi label={`Tendência ${trendArrow(stats.slope)}`} value={stats.slope > 0 ? 'Crescendo' : stats.slope < 0 ? 'Declinando' : 'Estável'} color={stats.slope > 0 ? 'text-emerald-600' : stats.slope < 0 ? 'text-red-600' : 'text-amber-600'} bg="bg-slate-50" />
             </div>
           </Card>
+
+          {/* Plano de tratamento */}
+          {(() => {
+            const patientId = filtered.find(s => s._patientId)?._patientId
+            const planGoals = patientId ? goals.filter(g => g.patient_id === patientId) : []
+            if (!planGoals.length) return null
+            return (
+              <Card className="p-4">
+                <h3 className="text-sm font-bold text-slate-700 mb-3">Plano de Tratamento — Objetivos</h3>
+                <div className="space-y-2">
+                  {planGoals.map(g => (
+                    <div key={g.id} className="flex items-start gap-2 text-xs border-b border-slate-50 pb-2 last:border-0">
+                      <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${g.status === 'achieved' ? 'bg-emerald-500' : g.status === 'discontinued' ? 'bg-slate-300' : 'bg-indigo-500'}`} />
+                      <div className="flex-1">
+                        <p className={`font-semibold text-slate-800 ${g.status === 'achieved' ? 'line-through' : ''}`}>{g.title}</p>
+                        <p className="text-slate-400">{DOMAIN_LABEL[g.domain]} · {TERM_LABEL[g.term]} · {STATUS_LABEL[g.status]}{g.target_date ? ` · meta ${new Date(g.target_date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )
+          })()}
 
           {/* Program status table */}
           {uniquePrograms.length > 1 && (
