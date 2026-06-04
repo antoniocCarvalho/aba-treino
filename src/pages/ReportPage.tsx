@@ -2,11 +2,12 @@ import { useState, useMemo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell } from 'recharts'
 import { Printer, Download, FileSpreadsheet } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
-import { computeStatus, computeStreak, movingAverage, trendArrow, linearRegression, rateColor, PHASE_LABEL } from '../lib/aba'
+import { computeStatus, computeStreak, movingAverage, trendArrow, linearRegression, rateColor, PHASE_LABEL, STATUS_LABEL as PROGRAM_STATUS_LABEL } from '../lib/aba'
 import { exportSessionsCSV, exportSessionsJSON, dateStamp } from '../lib/export'
 import { DOMAIN_LABEL, TERM_LABEL, STATUS_LABEL } from '../lib/goals'
 import { Card } from '../components/ui/Card'
 import { StatusBadge } from '../components/ui/Badge'
+import { AiReport, type AiReportPayload } from '../components/AiReport'
 
 export function ReportPage() {
   const { sessions, profile, goals } = useAppStore()
@@ -56,6 +57,28 @@ export function ReportPage() {
   }, [filtered])
 
   const fileBase = `aba_${student.replace(/\s+/g, '_')}_${dateStamp()}`
+
+  // Payload para a função de IA (resumo enxuto das sessões + contexto clínico)
+  const aiPayload = useMemo<AiReportPayload>(() => ({
+    student,
+    period: filtered.length ? { from: filtered[0].date, to: filtered[filtered.length - 1].date } : undefined,
+    professional: { name: profile?.full_name, crp: profile?.crp },
+    programsSummary: uniquePrograms.map(prog => {
+      const ps = filtered.filter(s => s.program === prog)
+      return {
+        name: prog, sessions: ps.length,
+        mean: +(ps.reduce((a, s) => a + s.rate, 0) / ps.length).toFixed(1),
+        streak: computeStreak(ps, criterion),
+        status: PROGRAM_STATUS_LABEL[computeStatus(ps, criterion)],
+      }
+    }),
+    sessions: filtered.map(s => ({
+      date: s.date, program: s.program, phase: PHASE_LABEL[s.phase] ?? s.phase,
+      collectionType: s.collectionType, trials: s.trials,
+      rate: (s.collectionType === 'dtt' || s.collectionType === 'task_analysis' || s.collectionType === 'interval') ? s.rate : null,
+      pdi: s.pdi, criterion: s.criterion, notes: s.notes || undefined,
+    })),
+  }), [student, filtered, uniquePrograms, criterion, profile])
 
   return (
     <div className="space-y-4">
@@ -140,6 +163,9 @@ export function ReportPage() {
               <Kpi label={`Tendência ${trendArrow(stats.slope)}`} value={stats.slope > 0 ? 'Crescendo' : stats.slope < 0 ? 'Declinando' : 'Estável'} color={stats.slope > 0 ? 'text-emerald-600' : stats.slope < 0 ? 'text-red-600' : 'text-amber-600'} bg="bg-slate-50" />
             </div>
           </Card>
+
+          {/* Relatório por IA */}
+          <AiReport payload={aiPayload} />
 
           {/* Plano de tratamento */}
           {(() => {
