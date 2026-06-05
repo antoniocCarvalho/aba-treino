@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X, Share2, ChevronDown, CalendarDays, Play } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X, Share2, ChevronDown, CalendarDays, Play, Bell } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { Card } from '../components/ui/Card'
@@ -27,6 +27,14 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
   const [query, setQuery] = useState('')
   const [sheet, setSheet] = useState<Patient | null>(null)
 
+  // Atualiza a cada 30 s para manter o countdown preciso
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const now = Date.now()
   const today = new Date().toISOString().slice(0, 10)
   const hour  = new Date().getHours()
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
@@ -36,6 +44,15 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
   const todayAppts = appointments
     .filter(a => a.scheduled_at.startsWith(today))
     .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
+
+  // Próxima consulta agendada nas próximas 2 horas
+  const nextAlert = appointments
+    .filter(a => {
+      if (a.status !== 'scheduled') return false
+      const diff = new Date(a.scheduled_at).getTime() - now
+      return diff > 0 && diff <= 2 * 60 * 60 * 1000
+    })
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0] ?? null
 
   // Build patient list
   const patients: Patient[] = Object.values(
@@ -71,6 +88,20 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
 
   return (
     <>
+      {/* ── Alerta de consulta próxima ────────────────────────────── */}
+      {nextAlert && (
+        <UpcomingAlert
+          appointment={nextAlert}
+          now={now}
+          onStart={() => {
+            const { updateConfig, setPanel } = useSessionStore.getState()
+            updateConfig({ student: nextAlert.patient_name, program: '', criterion: 80 })
+            setPanel('config')
+            onNavigate('session')
+          }}
+        />
+      )}
+
       {/* ── Saudação ──────────────────────────────────────────────── */}
       <div className="mb-5">
         <h2 className="text-xl font-black text-slate-900">{greeting}, {firstName} 👋</h2>
@@ -140,6 +171,77 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
       {/* Patient Bottom Sheet */}
       {sheet && <PatientSheet patient={sheet} onClose={() => setSheet(null)} onNavigate={onNavigate} />}
     </>
+  )
+}
+
+// ── Componente: alerta de consulta próxima ────────────────────────────────────
+function UpcomingAlert({ appointment, now, onStart }: {
+  appointment: Appointment
+  now: number
+  onStart: () => void
+}) {
+  const [dismissed, setDismissed] = useState(false)
+  if (dismissed) return null
+
+  const diffMs  = new Date(appointment.scheduled_at).getTime() - now
+  const diffMin = Math.ceil(diffMs / 60_000)
+  const time    = new Date(appointment.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
+  // Urgência: <10 min = vermelho, <20 = âmbar, <60 = teal, <120 = azul slate
+  const isUrgent  = diffMin <= 10
+  const isWarning = diffMin <= 20
+  const isSoon    = diffMin <= 60
+
+  const colors = isUrgent
+    ? { bg: 'bg-red-500',   ring: 'ring-red-400',   text: 'text-red-50',    sub: 'text-red-200',   btn: 'bg-white text-red-600 hover:bg-red-50' }
+    : isWarning
+    ? { bg: 'bg-amber-500', ring: 'ring-amber-400',  text: 'text-amber-50',  sub: 'text-amber-200', btn: 'bg-white text-amber-600 hover:bg-amber-50' }
+    : isSoon
+    ? { bg: 'bg-primary',   ring: 'ring-primary/50', text: 'text-white',     sub: 'text-white/70',  btn: 'bg-white text-primary hover:bg-primary-50' }
+    : { bg: 'bg-slate-700', ring: 'ring-slate-500',  text: 'text-white',     sub: 'text-slate-300', btn: 'bg-white text-slate-700 hover:bg-slate-100' }
+
+  const label = diffMin <= 1
+    ? 'em menos de 1 minuto'
+    : diffMin < 60
+    ? `em ${diffMin} minuto${diffMin !== 1 ? 's' : ''}`
+    : `às ${time}`
+
+  return (
+    <div className={`relative ${colors.bg} ring-1 ${colors.ring} rounded-2xl px-4 py-3.5 mb-5 shadow-md`}>
+      {/* Fechar */}
+      <button
+        onClick={() => setDismissed(true)}
+        className={`absolute top-3 right-3 ${colors.sub} hover:opacity-80 transition-opacity`}
+      >
+        <X size={15} />
+      </button>
+
+      <div className="flex items-center gap-3 pr-6">
+        {/* Ícone com pulso quando urgente */}
+        <div className={`flex-shrink-0 w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center ${isUrgent ? 'animate-pulse' : ''}`}>
+          <Bell size={18} className={colors.text} />
+        </div>
+
+        {/* Texto */}
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-black ${colors.text} leading-tight`}>
+            {appointment.patient_name}
+          </p>
+          <p className={`text-xs ${colors.sub} mt-0.5`}>
+            Sessão agendada {label} · {appointment.duration_min}min
+          </p>
+        </div>
+
+        {/* Botão iniciar */}
+        <button
+          onClick={onStart}
+          className={`flex-shrink-0 flex items-center gap-1.5 ${colors.btn} text-xs font-bold px-3 py-2 rounded-xl transition-colors active:scale-95`}
+        >
+          <Play size={11} fill="currentColor" />
+          Iniciar
+        </button>
+      </div>
+    </div>
   )
 }
 
