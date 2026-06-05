@@ -6,7 +6,8 @@ import { Card } from '../components/ui/Card'
 import { StatusBadge } from '../components/ui/Badge'
 import { Dashboard } from '../components/Dashboard'
 import { TreatmentPlan } from '../components/TreatmentPlan'
-import { computeStatus, computeStreak, rateColor } from '../lib/aba'
+import { ClinicalInsights } from '../components/ClinicalInsights'
+import { computeStatus, computeStreak, rateColor, STATUS_LABEL } from '../lib/aba'
 import { cls } from '../lib/utils'
 import type { Patient, PatientProgram } from '../types'
 
@@ -107,7 +108,7 @@ function Avatar({ name }: { name: string }) {
 
 function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onClose: () => void; onNavigate: (t: string) => void }) {
   const { updateConfig, setPanel } = useSessionStore()
-  const { renamePatient, deletePatient, renameProgram, deleteProgram, createShareLink, showToast } = useAppStore()
+  const { renamePatient, deletePatient, renameProgram, deleteProgram, createShareLink, showToast, goals } = useAppStore()
 
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(patient.name)
@@ -198,6 +199,55 @@ function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onCl
               <TreatmentPlan patientId={patient.id} />
             </div>
           )}
+
+          {/* Barra de progresso do plano de tratamento */}
+          {patient.id && (() => {
+            const patGoals = goals.filter(g => g.patient_id === patient.id)
+            if (!patGoals.length) return null
+            const achieved = patGoals.filter(g => g.status === 'achieved').length
+            const pct = (achieved / patGoals.length) * 100
+            return (
+              <div className="bg-slate-50 rounded-xl px-3.5 py-3 mb-5">
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span className="font-semibold text-slate-600">Objetivos do plano</span>
+                  <span className="font-bold" style={{ color: pct === 100 ? '#059669' : '#5046E4' }}>{achieved}/{patGoals.length} alcançados</span>
+                </div>
+                <div className="bg-slate-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-2 rounded-full transition-all"
+                    style={{ width: `${pct}%`, background: pct === 100 ? '#059669' : '#5046E4' }}
+                  />
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Insights clínicos por IA */}
+          {(() => {
+            const programsSummary = patient.programs.map(prog => ({
+              name: prog.name,
+              sessions: prog.sessions.length,
+              mean: parseFloat(prog.meanRate.toFixed(1)),
+              streak: prog.streak,
+              status: STATUS_LABEL[prog.status],
+            }))
+            const recentSessions = [...patient.sessions]
+              .sort((a, b) => b.timestamp - a.timestamp)
+              .slice(0, 14)
+              .map(s => ({
+                date: s.date,
+                program: s.program,
+                rate: (s.collectionType === 'dtt' || s.collectionType === 'task_analysis' || s.collectionType === 'interval') ? s.rate : null,
+                collectionType: s.collectionType,
+              }))
+            return (
+              <ClinicalInsights
+                student={patient.name}
+                programsSummary={programsSummary}
+                recentSessions={recentSessions}
+              />
+            )
+          })()}
 
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Programas</p>
 

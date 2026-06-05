@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell } from 'recharts'
-import { Printer, Download, FileSpreadsheet } from 'lucide-react'
+import { Printer, Download, FileSpreadsheet, ImageDown } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { computeStatus, computeStreak, movingAverage, trendArrow, linearRegression, rateColor, PHASE_LABEL, STATUS_LABEL as PROGRAM_STATUS_LABEL } from '../lib/aba'
 import { exportSessionsCSV, exportSessionsJSON, dateStamp } from '../lib/export'
@@ -13,6 +13,31 @@ export function ReportPage() {
   const { sessions, profile, goals } = useAppStore()
   const [student, setStudent] = useState('')
   const [program, setProgram] = useState('')
+  const chartRef = useRef<HTMLDivElement>(null)
+
+  function downloadChartPNG() {
+    const svg = chartRef.current?.querySelector('svg')
+    if (!svg) return
+    const svgData = new XMLSerializer().serializeToString(svg)
+    const rect = svg.getBoundingClientRect()
+    const scale = 2
+    const canvas = document.createElement('canvas')
+    canvas.width = rect.width * scale
+    canvas.height = rect.height * scale
+    const ctx = canvas.getContext('2d')!
+    const img = new Image()
+    img.onload = () => {
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.scale(scale, scale)
+      ctx.drawImage(img, 0, 0, rect.width, rect.height)
+      const a = document.createElement('a')
+      a.download = `grafico_${student.replace(/\s+/g, '_')}_${dateStamp()}.png`
+      a.href = canvas.toDataURL('image/png')
+      a.click()
+    }
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData)
+  }
 
   const students = useMemo(() => [...new Set(sessions.map(s => s.student))].sort(), [sessions])
   const programs = useMemo(() => student ? [...new Set(sessions.filter(s => s.student === student).map(s => s.program))].sort() : [], [sessions, student])
@@ -227,7 +252,13 @@ export function ReportPage() {
 
           {/* Evolution chart */}
           <Card className="p-4">
-            <h3 className="text-sm font-bold text-slate-700 mb-3">Evolução da Taxa de Resposta</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-slate-700">Evolução da Taxa de Resposta</h3>
+              <button onClick={downloadChartPNG} className="no-print flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary border border-slate-200 hover:border-primary rounded-lg px-2.5 py-1.5 transition-colors">
+                <ImageDown size={13} /> PNG
+              </button>
+            </div>
+            <div ref={chartRef}>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -16 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -239,6 +270,7 @@ export function ReportPage() {
                 <Line type="monotone" dataKey="ma" stroke="#c7d2fe" strokeWidth={2} strokeDasharray="4 3" dot={false} />
               </LineChart>
             </ResponsiveContainer>
+            </div>
           </Card>
 
           {/* Distribution */}
