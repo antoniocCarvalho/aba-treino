@@ -34,10 +34,6 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
-function formatDateInput(iso: string): string {
-  return iso.slice(0, 10)
-}
-
 interface AddForm {
   patient_name: string
   patient_id: string | null
