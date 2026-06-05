@@ -250,7 +250,7 @@ export function GuidePage() {
         </dl>
       </Section>
 
-      <p className="text-center text-xs text-slate-300 pt-2 pb-1">ABA Treino · Guia do Profissional</p>
+      <p className="text-center text-xs text-slate-300 pt-2 pb-1">Evolvy · Guia do Profissional</p>
     </div>
   )
 }

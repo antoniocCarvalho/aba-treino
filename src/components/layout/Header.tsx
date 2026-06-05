@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LogOut, ChevronDown, ClipboardList, Settings, HelpCircle } from 'lucide-react'
+import { LogOut, ChevronDown, TrendingUp, Settings, HelpCircle } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -18,11 +18,11 @@ export function Header({ onNavigate }: { onNavigate?: (tab: string) => void }) {
       <div className="max-w-2xl mx-auto px-4 h-12 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
-            <ClipboardList size={14} className="text-white" />
+            <TrendingUp size={14} className="text-white" strokeWidth={2.5} />
           </div>
           <div>
-            <p className="text-sm font-bold text-primary leading-none">ABA Treino</p>
-            <p className="text-xs text-slate-400 leading-none mt-0.5">Registro de Sessões</p>
+            <p className="text-sm font-black text-primary leading-none tracking-tight">Evolvy</p>
+            <p className="text-xs text-slate-400 leading-none mt-0.5">Plataforma ABA</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

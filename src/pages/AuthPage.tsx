@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { ClipboardList } from 'lucide-react'
+import { TrendingUp } from 'lucide-react'
 
 export function AuthPage() {
   const [view, setView] = useState<'login' | 'register'>('login')
@@ -41,10 +41,11 @@ export function AuthPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary/30">
-            <ClipboardList size={32} className="text-white" />
+            <TrendingUp size={30} className="text-white" strokeWidth={2.5} />
           </div>
-          <h1 className="text-2xl font-black text-slate-900">ABA Treino</h1>
-          <p className="text-slate-500 mt-1">{view === 'login' ? 'Entre com sua conta' : 'Criar conta profissional'}</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Evolvy</h1>
+          <p className="text-slate-400 text-sm mt-1 font-medium">Plataforma ABA profissional</p>
+          <p className="text-slate-500 mt-3 text-sm">{view === 'login' ? 'Entre com sua conta' : 'Criar conta profissional'}</p>
         </div>
 
         <div className="bg-white rounded-3xl shadow-modal p-8">

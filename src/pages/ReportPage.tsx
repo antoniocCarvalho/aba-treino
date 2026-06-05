@@ -132,7 +132,7 @@ export function ReportPage() {
           <button
             disabled={!filtered.length || !stats}
             onClick={() => {
-              const text = `📊 *Relatório ABA — ${student}*\n\nPeríodo: ${filtered[0]?.date} – ${filtered[filtered.length-1]?.date}\nSessões: ${stats?.count}\nTaxa média: ${stats?.mean.toFixed(1)}%\nIDI médio: ${stats?.pdiMean !== null ? stats?.pdiMean?.toFixed(0) + '%' : '—'}\n\n_Gerado pelo ABA Treino_`
+              const text = `📊 *Relatório ABA — ${student}*\n\nPeríodo: ${filtered[0]?.date} – ${filtered[filtered.length-1]?.date}\nSessões: ${stats?.count}\nTaxa média: ${stats?.mean.toFixed(1)}%\nIDI médio: ${stats?.pdiMean !== null ? stats?.pdiMean?.toFixed(0) + '%' : '—'}\n\n_Gerado pelo Evolvy_`
               window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(text), '_blank')
             }}
             className="flex items-center justify-center gap-1.5 bg-green-50 border border-green-200 text-green-700 font-semibold py-2.5 rounded-xl text-xs hover:bg-green-100 disabled:opacity-50"

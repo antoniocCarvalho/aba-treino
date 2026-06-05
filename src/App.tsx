@@ -60,7 +60,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F0F4FF]">
+    <div className="min-h-screen bg-[#F0FDFA]">
       <Header onNavigate={setTab} />
       {/* Faixa de status offline / fila pendente */}
       {(!online || pendingCount > 0) && (

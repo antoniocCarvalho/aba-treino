@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import { ClipboardList, Award, TrendingUp } from 'lucide-react'
+import { TrendingUp, Award } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { computeStatus, computeStreak, rateColor, STATUS_LABEL, statusColor } from '../lib/aba'
 import type { Session } from '../types'
@@ -63,10 +63,10 @@ export function ParentView({ token }: { token: string }) {
       <header className="bg-white border-b border-slate-100">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-2.5">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <ClipboardList size={15} className="text-white" />
+            <TrendingUp size={15} className="text-white" strokeWidth={2.5} />
           </div>
           <div>
-            <p className="text-sm font-bold text-primary leading-none">ABA Treino</p>
+            <p className="text-sm font-black text-primary leading-none tracking-tight">Evolvy</p>
             <p className="text-xs text-slate-400 leading-none mt-0.5">Acompanhamento de Progresso</p>
           </div>
         </div>

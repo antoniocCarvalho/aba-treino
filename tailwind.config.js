@@ -5,7 +5,7 @@ export default {
     extend: {
       fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
       colors: {
-        primary: { DEFAULT: '#5046E4', 50: '#EEF2FF', 100: '#E0E7FF', 500: '#5046E4', 600: '#4338CA', 700: '#3730A3' },
+        primary: { DEFAULT: '#0D9488', 50: '#F0FDFA', 100: '#CCFBF1', 500: '#14B8A6', 600: '#0F766E', 700: '#115E59' },
         success: { DEFAULT: '#059669', light: '#D1FAE5' },
         warning: { DEFAULT: '#D97706', light: '#FEF3C7' },
         danger:  { DEFAULT: '#DC2626', light: '#FEE2E2' },
