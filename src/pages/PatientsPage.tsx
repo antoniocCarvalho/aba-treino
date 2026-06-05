@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X, Share2, ChevronDown } from 'lucide-react'
+import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X, Share2, ChevronDown, Clock, CalendarDays, Play } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { Card } from '../components/ui/Card'
@@ -8,7 +8,7 @@ import { Dashboard } from '../components/Dashboard'
 import { TreatmentPlan } from '../components/TreatmentPlan'
 import { computeStatus, computeStreak, rateColor } from '../lib/aba'
 import { cls } from '../lib/utils'
-import type { Patient, PatientProgram, PreferenceItem, PreferenceCategory } from '../types'
+import type { Patient, PatientProgram, PreferenceItem, PreferenceCategory, Appointment } from '../types'
 
 const CATEGORY_LABEL: Record<PreferenceCategory, string> = {
   comida: 'Comida', brinquedo: 'Brinquedo', atividade: 'Atividade', social: 'Social', outro: 'Outro',
@@ -21,9 +21,21 @@ const CATEGORY_COLOR: Record<PreferenceCategory, string> = {
 interface PatientsPageProps { onNavigate: (tab: string) => void }
 
 export function PatientsPage({ onNavigate }: PatientsPageProps) {
-  const sessions = useAppStore((s) => s.sessions)
+  const sessions   = useAppStore((s) => s.sessions)
+  const profile    = useAppStore((s) => s.profile)
+  const appointments = useAppStore((s) => s.appointments)
   const [query, setQuery] = useState('')
   const [sheet, setSheet] = useState<Patient | null>(null)
+
+  const today = new Date().toISOString().slice(0, 10)
+  const hour  = new Date().getHours()
+  const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
+  const firstName = profile?.full_name?.split(' ')[0] ?? 'Profissional'
+  const todayLabel = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
+
+  const todayAppts = appointments
+    .filter(a => a.scheduled_at.startsWith(today))
+    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
 
   // Build patient list
   const patients: Patient[] = Object.values(
@@ -57,53 +69,177 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
     return { id: ss.find(s => s._patientId)?._patientId, name, sessions: ss, meanRate, lastDate, programs: programs.sort((a, b) => b.meanRate - a.meanRate) }
   }).filter(p => !query || p.name.toLowerCase().includes(query.toLowerCase()))
 
-  if (!sessions.length) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 text-center p-8">
-        <div className="text-5xl mb-4">📋</div>
-        <h3 className="font-bold text-slate-700 text-lg">Nenhum paciente ainda</h3>
-        <p className="text-slate-400 text-sm mt-1 mb-6">Inicie uma sessão para registrar o primeiro paciente</p>
-        <button onClick={() => onNavigate('session')} className="bg-primary text-white font-semibold px-6 py-2.5 rounded-xl hover:bg-primary-600 transition-colors">
-          <Plus size={16} className="inline mr-1.5" />Iniciar Sessão
-        </button>
-      </div>
-    )
-  }
-
   return (
     <>
+      {/* ── Saudação ──────────────────────────────────────────────── */}
+      <div className="mb-5">
+        <h2 className="text-xl font-black text-slate-900">{greeting}, {firstName} 👋</h2>
+        <p className="text-sm text-slate-400 mt-0.5 capitalize">{todayLabel}</p>
+      </div>
+
+      {/* ── Agenda de Hoje ────────────────────────────────────────── */}
+      <TodayAgenda
+        appointments={todayAppts}
+        onNavigate={onNavigate}
+        onStartSession={(appt) => {
+          const { updateConfig, setPanel } = useSessionStore.getState()
+          updateConfig({ student: appt.patient_name, program: '', criterion: 80 })
+          setPanel('config')
+          onNavigate('session')
+        }}
+      />
+
+      {/* ── Dashboard: KPIs + Alertas ─────────────────────────────── */}
       <Dashboard onNavigate={onNavigate} />
 
-      <div className="mb-4">
-        <div className="relative">
-          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar paciente…" className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
-        </div>
-      </div>
+      {/* ── Pacientes ─────────────────────────────────────────────── */}
+      {sessions.length === 0 ? (
+        <Card className="p-10 text-center">
+          <div className="text-4xl mb-3">📋</div>
+          <h3 className="font-bold text-slate-700">Nenhum paciente ainda</h3>
+          <p className="text-slate-400 text-sm mt-1 mb-5">Inicie uma sessão para registrar o primeiro paciente</p>
+          <button onClick={() => onNavigate('session')} className="bg-primary text-white font-semibold px-6 py-2.5 rounded-xl hover:bg-primary-600 transition-colors">
+            <Plus size={16} className="inline mr-1.5" />Iniciar Sessão
+          </button>
+        </Card>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Pacientes</p>
+          </div>
 
-      <div className="space-y-3">
-        {patients.map(p => (
-          <Card key={p.name} onClick={() => setSheet(p)} className="p-4 flex items-center gap-3">
-            <Avatar name={p.name} />
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-slate-900 truncate">{p.name}</p>
-              <p className="text-xs text-slate-400 mt-0.5">{p.programs.length} programa{p.programs.length !== 1 ? 's' : ''} · última sessão {p.lastDate}</p>
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {p.programs.slice(0, 3).map(prog => <StatusBadge key={prog.name} status={prog.status} />)}
-              </div>
+          <div className="mb-3">
+            <div className="relative">
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar paciente…" className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
-            <div className="text-right flex-shrink-0">
-              <p className="text-xl font-black tabular" style={{ color: rateColor(p.meanRate) }}>{p.meanRate.toFixed(0)}%</p>
-              <p className="text-xs text-slate-400">média</p>
-            </div>
-            <ChevronRight size={16} className="text-slate-300" />
-          </Card>
-        ))}
-      </div>
+          </div>
+
+          <div className="space-y-3">
+            {patients.map(p => (
+              <Card key={p.name} onClick={() => setSheet(p)} className="p-4 flex items-center gap-3">
+                <Avatar name={p.name} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-slate-900 truncate">{p.name}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{p.programs.length} programa{p.programs.length !== 1 ? 's' : ''} · última sessão {p.lastDate}</p>
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {p.programs.slice(0, 3).map(prog => <StatusBadge key={prog.name} status={prog.status} />)}
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xl font-black tabular" style={{ color: rateColor(p.meanRate) }}>{p.meanRate.toFixed(0)}%</p>
+                  <p className="text-xs text-slate-400">média</p>
+                </div>
+                <ChevronRight size={16} className="text-slate-300" />
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* Patient Bottom Sheet */}
       {sheet && <PatientSheet patient={sheet} onClose={() => setSheet(null)} onNavigate={onNavigate} />}
     </>
+  )
+}
+
+// ── Componente: agenda do dia ─────────────────────────────────────────────────
+const APPT_STATUS_COLOR = {
+  scheduled:  'border-primary/30 bg-primary/5',
+  completed:  'border-emerald-200 bg-emerald-50',
+  cancelled:  'border-slate-200 bg-slate-50',
+  missed:     'border-red-200 bg-red-50',
+}
+const APPT_STATUS_LABEL = {
+  scheduled: 'Agendado', completed: 'Realizado', cancelled: 'Cancelado', missed: 'Faltou',
+}
+const APPT_STATUS_DOT = {
+  scheduled: 'bg-primary', completed: 'bg-emerald-500', cancelled: 'bg-slate-300', missed: 'bg-red-400',
+}
+
+function TodayAgenda({
+  appointments, onNavigate, onStartSession,
+}: {
+  appointments: Appointment[]
+  onNavigate: (t: string) => void
+  onStartSession: (a: Appointment) => void
+}) {
+  return (
+    <div className="mb-5">
+      <div className="flex items-center justify-between mb-2.5">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Agenda de Hoje</p>
+        <button
+          onClick={() => onNavigate('calendar')}
+          className="flex items-center gap-1 text-xs text-primary font-semibold hover:underline"
+        >
+          <CalendarDays size={12} /> Ver agenda
+        </button>
+      </div>
+
+      {appointments.length === 0 ? (
+        <button
+          onClick={() => onNavigate('calendar')}
+          className="w-full border border-dashed border-slate-200 rounded-2xl py-5 text-center hover:border-primary hover:bg-primary/5 transition-all group"
+        >
+          <CalendarDays size={20} className="mx-auto mb-1.5 text-slate-300 group-hover:text-primary transition-colors" />
+          <p className="text-sm text-slate-400 group-hover:text-primary font-medium transition-colors">
+            Sem sessões agendadas para hoje
+          </p>
+          <p className="text-xs text-slate-300 mt-0.5">Toque para adicionar na agenda</p>
+        </button>
+      ) : (
+        <div className="space-y-2">
+          {appointments.map(a => {
+            const time = new Date(a.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            const status = a.status as keyof typeof APPT_STATUS_COLOR
+            const isScheduled = a.status === 'scheduled'
+            return (
+              <div
+                key={a.id}
+                className={`flex items-center gap-3 border rounded-2xl px-4 py-3 ${APPT_STATUS_COLOR[status]}`}
+              >
+                {/* Hora */}
+                <div className="text-center flex-shrink-0 w-12">
+                  <p className="text-base font-black text-slate-800 leading-none">{time}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{a.duration_min}min</p>
+                </div>
+
+                {/* Separador */}
+                <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                  <div className={`w-2 h-2 rounded-full ${APPT_STATUS_DOT[status]}`} />
+                  <div className="w-px h-4 bg-slate-200" />
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-slate-900 truncate">{a.patient_name}</p>
+                  <p className="text-xs text-slate-400">{APPT_STATUS_LABEL[status]}{a.notes ? ` · ${a.notes}` : ''}</p>
+                </div>
+
+                {/* Ação */}
+                {isScheduled && (
+                  <button
+                    onClick={() => onStartSession(a)}
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-primary-600 active:scale-95 transition-all"
+                  >
+                    <Play size={11} fill="white" />
+                    Iniciar
+                  </button>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Botão para adicionar mais */}
+          <button
+            onClick={() => onNavigate('calendar')}
+            className="w-full border border-dashed border-slate-200 rounded-2xl py-2.5 text-xs text-slate-400 hover:border-primary hover:text-primary transition-all font-medium"
+          >
+            + Adicionar sessão na agenda
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 

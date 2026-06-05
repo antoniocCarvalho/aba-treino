@@ -1,4 +1,4 @@
-import { Users, Plus, BarChart2, FileText, CalendarDays } from 'lucide-react'
+import { Home, Plus, BarChart2, FileText, CalendarDays } from 'lucide-react'
 import { cls } from '../../lib/utils'
 
 interface BottomNavProps { tab: string; onTab: (t: string) => void }
@@ -8,8 +8,8 @@ export function BottomNav({ tab, onTab }: BottomNavProps) {
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 safe-bottom shadow-[0_-4px_24px_rgba(0,0,0,0.07)] no-print">
       <div className="max-w-2xl mx-auto flex items-stretch h-16">
         <button onClick={() => onTab('patients')} className={cls('flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors', tab === 'patients' ? 'text-primary' : 'text-slate-400 hover:text-slate-600')}>
-          <Users size={20} strokeWidth={tab === 'patients' ? 2.5 : 1.8} />
-          Pacientes
+          <Home size={20} strokeWidth={tab === 'patients' ? 2.5 : 1.8} />
+          Início
         </button>
 
         <button onClick={() => onTab('history')} className={cls('flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors', tab === 'history' ? 'text-primary' : 'text-slate-400 hover:text-slate-600')}>
