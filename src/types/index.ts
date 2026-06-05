@@ -89,6 +89,7 @@ export interface Profile {
   role?: Role
   supervisor_id?: string | null
   avatar_url?: string
+  email_alerts_enabled?: boolean
 }
 
 // ── Onda 4: Avaliação de Preferência ─────────────────────────────────────────

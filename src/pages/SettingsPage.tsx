@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { UserCog, GraduationCap, Link2, Vibrate, SlidersHorizontal, ShieldCheck, HelpCircle, Pencil, Check, X, KeyRound, Mail, Camera, Trash2, Download, Package, AlertTriangle } from 'lucide-react'
+import { UserCog, GraduationCap, Link2, Vibrate, SlidersHorizontal, ShieldCheck, HelpCircle, Pencil, Check, X, KeyRound, Mail, Camera, Trash2, Download, Package, AlertTriangle, Bell } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { fileToAvatar } from '../lib/avatar'
@@ -102,6 +102,36 @@ export function SettingsPage({ onNavigate }: { onNavigate: (tab: string) => void
         <SlidersHorizontal size={20} className="text-primary" />
         <h1 className="text-lg font-black text-slate-900">Configurações</h1>
       </div>
+
+      {/* Notificações */}
+      <Card className="p-5">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-4">Notificações</p>
+
+        <div className="flex items-center justify-between py-2">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <Bell size={16} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Alertas por e-mail</p>
+              <p className="text-xs text-slate-400">Aviso quando uma sessão estiver próxima</p>
+            </div>
+          </div>
+          <Toggle
+            checked={!!profile?.email_alerts_enabled}
+            onChange={async (v) => {
+              await updateProfile({ email_alerts_enabled: v })
+            }}
+          />
+        </div>
+
+        {profile?.email_alerts_enabled && (
+          <div className="mt-3 bg-primary/5 border border-primary/20 rounded-xl px-3.5 py-3 text-xs text-slate-600 leading-relaxed">
+            📧 Os alertas serão enviados para <strong>{user?.email}</strong> quando houver sessões nas próximas 2 horas.
+            O e-mail é disparado automaticamente ao abrir o app.
+          </div>
+        )}
+      </Card>
 
       {/* Preferências de sessão */}
       <Card className="p-5">

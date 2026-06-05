@@ -17,6 +17,14 @@ import { BottomNav } from './components/layout/BottomNav'
 import { Toast } from './components/ui/Toast'
 import { DraftRecoveryBanner } from './components/session/DraftRecoveryBanner'
 
+// Dispara verificação de alertas por e-mail silenciosamente ao abrir o app
+function triggerEmailAlerts(token: string) {
+  fetch('/api/send-alerts', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => { /* silencioso — não bloqueia o app */ })
+}
+
 export default function App() {
   const { user, loading, setUser, setLoading, fetchProfile, fetchSessions, fetchGoals, fetchAppointments, dataLoading, syncPending, pendingCount } = useAppStore()
   const [tab, setTab] = useState('patients')
@@ -26,12 +34,18 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       setLoading(false)
-      if (session?.user) { fetchProfile(); fetchGoals(); fetchAppointments(); fetchSessions().then(syncPending) }
+      if (session?.user) {
+        fetchProfile(); fetchGoals(); fetchAppointments(); fetchSessions().then(syncPending)
+        triggerEmailAlerts(session.access_token)
+      }
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_ev, session) => {
       const prev = useAppStore.getState().user
       setUser(session?.user ?? null)
-      if (session?.user && !prev) { fetchProfile(); fetchGoals(); fetchAppointments(); fetchSessions().then(syncPending) }
+      if (session?.user && !prev) {
+        fetchProfile(); fetchGoals(); fetchAppointments(); fetchSessions().then(syncPending)
+        triggerEmailAlerts(session.access_token)
+      }
     })
     return () => subscription.unsubscribe()
   }, [])

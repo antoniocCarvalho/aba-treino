@@ -39,7 +39,7 @@ interface AppState {
   setRole: (role: 'bcba' | 'rbt') => Promise<boolean>
   linkSupervisor: (email: string) => Promise<boolean>
   // conta / perfil
-  updateProfile: (updates: { full_name?: string; crp?: string; avatar_url?: string }) => Promise<boolean>
+  updateProfile: (updates: { full_name?: string; crp?: string; avatar_url?: string; email_alerts_enabled?: boolean }) => Promise<boolean>
   changePassword: (newPassword: string) => Promise<boolean>
   changeEmail: (newEmail: string) => Promise<boolean>
   exportMyData: () => Promise<void>
