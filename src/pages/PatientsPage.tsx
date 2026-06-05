@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X, Share2, ChevronDown, CalendarDays, Play, Bell } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useSessionStore } from '../stores/sessionStore'
