@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell } from 'recharts'
-import { Printer, Download, FileSpreadsheet, ImageDown } from 'lucide-react'
+import { Printer, Download, FileSpreadsheet, ImageDown, Share2 } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { computeStatus, computeStreak, movingAverage, trendArrow, linearRegression, rateColor, PHASE_LABEL, STATUS_LABEL as PROGRAM_STATUS_LABEL } from '../lib/aba'
 import { exportSessionsCSV, exportSessionsJSON, dateStamp } from '../lib/export'
@@ -119,7 +119,7 @@ export function ReportPage() {
             {programs.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <button onClick={() => window.print()} disabled={!filtered.length} className="flex items-center justify-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 font-semibold py-2.5 rounded-xl text-xs hover:bg-indigo-100 disabled:opacity-50">
             <Printer size={14} /> PDF
           </button>
@@ -128,6 +128,16 @@ export function ReportPage() {
           </button>
           <button onClick={() => exportSessionsJSON(filtered, `${fileBase}.json`)} disabled={!filtered.length} className="flex items-center justify-center gap-1.5 bg-white border border-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl text-xs hover:bg-slate-50 disabled:opacity-50">
             <Download size={14} /> JSON
+          </button>
+          <button
+            disabled={!filtered.length || !stats}
+            onClick={() => {
+              const text = `📊 *Relatório ABA — ${student}*\n\nPeríodo: ${filtered[0]?.date} – ${filtered[filtered.length-1]?.date}\nSessões: ${stats?.count}\nTaxa média: ${stats?.mean.toFixed(1)}%\nIDI médio: ${stats?.pdiMean !== null ? stats?.pdiMean?.toFixed(0) + '%' : '—'}\n\n_Gerado pelo ABA Treino_`
+              window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(text), '_blank')
+            }}
+            className="flex items-center justify-center gap-1.5 bg-green-50 border border-green-200 text-green-700 font-semibold py-2.5 rounded-xl text-xs hover:bg-green-100 disabled:opacity-50"
+          >
+            <Share2 size={14} /> WhatsApp
           </button>
         </div>
       </Card>

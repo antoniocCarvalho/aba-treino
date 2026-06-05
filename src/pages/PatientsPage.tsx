@@ -1,15 +1,22 @@
-import { useState } from 'react'
-import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X, Share2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X, Share2, Star, ChevronDown } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { Card } from '../components/ui/Card'
 import { StatusBadge } from '../components/ui/Badge'
 import { Dashboard } from '../components/Dashboard'
 import { TreatmentPlan } from '../components/TreatmentPlan'
-import { ClinicalInsights } from '../components/ClinicalInsights'
-import { computeStatus, computeStreak, rateColor, STATUS_LABEL } from '../lib/aba'
+import { computeStatus, computeStreak, rateColor } from '../lib/aba'
 import { cls } from '../lib/utils'
-import type { Patient, PatientProgram } from '../types'
+import type { Patient, PatientProgram, PreferenceItem, PreferenceCategory } from '../types'
+
+const CATEGORY_LABEL: Record<PreferenceCategory, string> = {
+  comida: 'Comida', brinquedo: 'Brinquedo', atividade: 'Atividade', social: 'Social', outro: 'Outro',
+}
+const CATEGORY_COLOR: Record<PreferenceCategory, string> = {
+  comida: 'bg-orange-100 text-orange-700', brinquedo: 'bg-blue-100 text-blue-700',
+  atividade: 'bg-green-100 text-green-700', social: 'bg-purple-100 text-purple-700', outro: 'bg-slate-100 text-slate-600',
+}
 
 interface PatientsPageProps { onNavigate: (tab: string) => void }
 
@@ -108,7 +115,7 @@ function Avatar({ name }: { name: string }) {
 
 function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onClose: () => void; onNavigate: (t: string) => void }) {
   const { updateConfig, setPanel } = useSessionStore()
-  const { renamePatient, deletePatient, renameProgram, deleteProgram, createShareLink, showToast, goals } = useAppStore()
+  const { renamePatient, deletePatient, renameProgram, deleteProgram, createShareLink, showToast, goals, fetchPreferences, addPreference, deletePreference } = useAppStore()
 
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(patient.name)
@@ -222,33 +229,6 @@ function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onCl
             )
           })()}
 
-          {/* Insights clínicos por IA */}
-          {(() => {
-            const programsSummary = patient.programs.map(prog => ({
-              name: prog.name,
-              sessions: prog.sessions.length,
-              mean: parseFloat(prog.meanRate.toFixed(1)),
-              streak: prog.streak,
-              status: STATUS_LABEL[prog.status],
-            }))
-            const recentSessions = [...patient.sessions]
-              .sort((a, b) => b.timestamp - a.timestamp)
-              .slice(0, 14)
-              .map(s => ({
-                date: s.date,
-                program: s.program,
-                rate: (s.collectionType === 'dtt' || s.collectionType === 'task_analysis' || s.collectionType === 'interval') ? s.rate : null,
-                collectionType: s.collectionType,
-              }))
-            return (
-              <ClinicalInsights
-                student={patient.name}
-                programsSummary={programsSummary}
-                recentSessions={recentSessions}
-              />
-            )
-          })()}
-
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Programas</p>
 
           {patient.programs.map(prog => {
@@ -299,6 +279,16 @@ function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onCl
             + Novo Programa para {patient.name}
           </button>
 
+          {/* Reforçadores / Preferências */}
+          {patient.id && (
+            <PreferenceSection
+              patientId={patient.id}
+              fetchPreferences={fetchPreferences}
+              addPreference={addPreference}
+              deletePreference={deletePreference}
+            />
+          )}
+
           {/* Portal para pais */}
           <div className="mt-3 pt-3 border-t border-slate-100">
             <button onClick={handleShare} disabled={sharing} className="w-full flex items-center justify-center gap-2 border border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold py-2.5 rounded-xl text-sm hover:bg-indigo-100 disabled:opacity-50">
@@ -316,6 +306,107 @@ function PatientSheet({ patient, onClose, onNavigate }: { patient: Patient; onCl
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+interface PreferenceSectionProps {
+  patientId: string
+  fetchPreferences: (id: string) => Promise<PreferenceItem[]>
+  addPreference: (id: string, item: Pick<PreferenceItem, 'name' | 'category' | 'rank' | 'notes'>) => Promise<PreferenceItem | null>
+  deletePreference: (id: string) => Promise<boolean>
+}
+
+function PreferenceSection({ patientId, fetchPreferences, addPreference, deletePreference }: PreferenceSectionProps) {
+  const [items, setItems]       = useState<PreferenceItem[]>([])
+  const [open, setOpen]         = useState(false)
+  const [showAdd, setShowAdd]   = useState(false)
+  const [name, setName]         = useState('')
+  const [category, setCategory] = useState<PreferenceCategory>('brinquedo')
+  const [rank, setRank]         = useState(3)
+  const [saving, setSaving]     = useState(false)
+
+  useEffect(() => {
+    fetchPreferences(patientId).then(setItems)
+  }, [patientId])
+
+  async function handleAdd() {
+    if (!name.trim()) return
+    setSaving(true)
+    const item = await addPreference(patientId, { name: name.trim(), category, rank, notes: '' })
+    if (item) {
+      setItems(prev => [...prev, item].sort((a, b) => b.rank - a.rank))
+      setName(''); setShowAdd(false)
+    }
+    setSaving(false)
+  }
+
+  async function handleDelete(id: string) {
+    const ok = await deletePreference(id)
+    if (ok) setItems(prev => prev.filter(i => i.id !== id))
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-100">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between py-1 text-xs font-bold text-slate-400 uppercase tracking-wide"
+      >
+        <span>Reforçadores / Preferências {items.length > 0 && `(${items.length})`}</span>
+        <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-2">
+          {items.map(item => (
+            <div key={item.id} className="flex items-center gap-2 border border-slate-100 rounded-xl px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-800 truncate">{item.name}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${CATEGORY_COLOR[item.category]}`}>{CATEGORY_LABEL[item.category]}</span>
+                  <span className="text-xs text-amber-500">{'★'.repeat(item.rank)}{'☆'.repeat(5 - item.rank)}</span>
+                </div>
+              </div>
+              <button onClick={() => handleDelete(item.id)} className="text-slate-300 hover:text-red-400 p-1 transition-colors"><Trash2 size={13} /></button>
+            </div>
+          ))}
+
+          {showAdd ? (
+            <div className="border border-primary rounded-xl p-3 space-y-2">
+              <input
+                autoFocus value={name} onChange={e => setName(e.target.value)}
+                placeholder="Nome do reforçador (ex: bolinha, ipad, elogio)"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <select value={category} onChange={e => setCategory(e.target.value as PreferenceCategory)} className="border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary">
+                  {(Object.keys(CATEGORY_LABEL) as PreferenceCategory[]).map(c => (
+                    <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-1 justify-center">
+                  {[1,2,3,4,5].map(n => (
+                    <button key={n} onClick={() => setRank(n)} className={`text-lg ${n <= rank ? 'text-amber-400' : 'text-slate-200'}`}>★</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setShowAdd(false)} className="flex-1 border border-slate-200 text-slate-500 text-xs font-semibold py-2 rounded-lg">Cancelar</button>
+                <button onClick={handleAdd} disabled={!name.trim() || saving} className="flex-1 bg-primary text-white text-xs font-semibold py-2 rounded-lg disabled:opacity-50">
+                  {saving ? 'Salvando…' : 'Adicionar'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAdd(true)}
+              className="w-full border border-dashed border-slate-200 text-slate-400 text-xs font-semibold py-2.5 rounded-xl hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Plus size={13} /> Adicionar reforçador
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

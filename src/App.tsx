@@ -7,17 +7,18 @@ import { AuthPage } from './pages/AuthPage'
 import { PatientsPage } from './pages/PatientsPage'
 import { SessionPage } from './pages/SessionPage'
 // Páginas pesadas (gráficos) carregadas sob demanda → bundle inicial menor
-const HistoryPage = lazy(() => import('./pages/HistoryPage').then(m => ({ default: m.HistoryPage })))
-const ReportPage = lazy(() => import('./pages/ReportPage').then(m => ({ default: m.ReportPage })))
-const GuidePage = lazy(() => import('./pages/GuidePage').then(m => ({ default: m.GuidePage })))
+const HistoryPage  = lazy(() => import('./pages/HistoryPage').then(m => ({ default: m.HistoryPage })))
+const ReportPage   = lazy(() => import('./pages/ReportPage').then(m => ({ default: m.ReportPage })))
+const GuidePage    = lazy(() => import('./pages/GuidePage').then(m => ({ default: m.GuidePage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const CalendarPage = lazy(() => import('./pages/CalendarPage').then(m => ({ default: m.CalendarPage })))
 import { Header } from './components/layout/Header'
 import { BottomNav } from './components/layout/BottomNav'
 import { Toast } from './components/ui/Toast'
 import { DraftRecoveryBanner } from './components/session/DraftRecoveryBanner'
 
 export default function App() {
-  const { user, loading, setUser, setLoading, fetchProfile, fetchSessions, fetchGoals, dataLoading, syncPending, pendingCount } = useAppStore()
+  const { user, loading, setUser, setLoading, fetchProfile, fetchSessions, fetchGoals, fetchAppointments, dataLoading, syncPending, pendingCount } = useAppStore()
   const [tab, setTab] = useState('patients')
   const online = useOnline()
 
@@ -25,12 +26,12 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       setLoading(false)
-      if (session?.user) { fetchProfile(); fetchGoals(); fetchSessions().then(syncPending) }
+      if (session?.user) { fetchProfile(); fetchGoals(); fetchAppointments(); fetchSessions().then(syncPending) }
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_ev, session) => {
       const prev = useAppStore.getState().user
       setUser(session?.user ?? null)
-      if (session?.user && !prev) { fetchProfile(); fetchGoals(); fetchSessions().then(syncPending) }
+      if (session?.user && !prev) { fetchProfile(); fetchGoals(); fetchAppointments(); fetchSessions().then(syncPending) }
     })
     return () => subscription.unsubscribe()
   }, [])
@@ -55,6 +56,7 @@ export default function App() {
     report:   <ReportPage />,
     guide:    <GuidePage />,
     settings: <SettingsPage onNavigate={setTab} />,
+    calendar: <CalendarPage />,
   }
 
   return (

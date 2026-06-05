@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { normalizeSession } from '../lib/utils'
 import { enqueue, dequeue, getQueue, type SessionPayload } from '../lib/offline'
-import type { Session, Profile, TreatmentGoal } from '../types'
+import type { Session, Profile, TreatmentGoal, Appointment, PreferenceItem } from '../types'
 import type { User } from '@supabase/supabase-js'
 
 interface AppState {
@@ -10,6 +10,7 @@ interface AppState {
   profile: Profile | null
   sessions: Session[]
   goals: TreatmentGoal[]
+  appointments: Appointment[]
   loading: boolean
   dataLoading: boolean
   pendingCount: number
@@ -52,6 +53,15 @@ interface AppState {
   addGoal: (patientId: string, goal: Omit<TreatmentGoal, 'id' | 'patient_id' | 'created_at'>) => Promise<boolean>
   updateGoal: (id: string, updates: Partial<TreatmentGoal>) => Promise<boolean>
   deleteGoal: (id: string) => Promise<boolean>
+  // agenda de sessões (Onda 5)
+  fetchAppointments: () => Promise<void>
+  addAppointment: (appt: Omit<Appointment, 'id' | 'created_at'>) => Promise<boolean>
+  updateAppointment: (id: string, updates: Partial<Pick<Appointment, 'status' | 'notes' | 'title' | 'scheduled_at' | 'duration_min'>>) => Promise<boolean>
+  deleteAppointment: (id: string) => Promise<boolean>
+  // preferências / reforçadores (Onda 4)
+  fetchPreferences: (patientId: string) => Promise<PreferenceItem[]>
+  addPreference: (patientId: string, item: Pick<PreferenceItem, 'name' | 'category' | 'rank' | 'notes'>) => Promise<PreferenceItem | null>
+  deletePreference: (id: string) => Promise<boolean>
 }
 
 // Converte um payload em uma Session otimista (exibida enquanto não sincroniza)
@@ -113,6 +123,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   profile: null,
   sessions: [],
   goals: [],
+  appointments: [],
   loading: true,
   dataLoading: false,
   pendingCount: getQueue().length,
@@ -562,6 +573,107 @@ export const useAppStore = create<AppState>((set, get) => ({
       return true
     } catch {
       get().showToast('Erro ao remover objetivo', 'error')
+      return false
+    }
+  },
+
+  // ── Agenda de sessões (Onda 5) ────────────────────────────────────────────
+  fetchAppointments: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('id, patient_id, patient_name, title, scheduled_at, duration_min, notes, status, created_at')
+        .order('scheduled_at', { ascending: true })
+      if (error) throw error
+      set({ appointments: (data ?? []) as Appointment[] })
+    } catch (e) {
+      console.warn('Agenda indisponível (rode a migration onda45):', e)
+    }
+  },
+
+  addAppointment: async (appt) => {
+    const uid = get().user?.id
+    if (!uid) return false
+    try {
+      const { data, error } = await supabase.from('appointments')
+        .insert({ ...appt, psychologist_id: uid })
+        .select('id, patient_id, patient_name, title, scheduled_at, duration_min, notes, status, created_at')
+        .single()
+      if (error) throw error
+      set((st) => ({ appointments: [...st.appointments, data as Appointment].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)) }))
+      get().showToast('Agendamento criado', 'success')
+      return true
+    } catch {
+      get().showToast('Erro ao criar agendamento', 'error')
+      return false
+    }
+  },
+
+  updateAppointment: async (id, updates) => {
+    try {
+      const { error } = await supabase.from('appointments').update(updates).eq('id', id)
+      if (error) throw error
+      set((st) => ({ appointments: st.appointments.map((a) => a.id === id ? { ...a, ...updates } : a) }))
+      return true
+    } catch {
+      get().showToast('Erro ao atualizar agendamento', 'error')
+      return false
+    }
+  },
+
+  deleteAppointment: async (id) => {
+    try {
+      const { error } = await supabase.from('appointments').delete().eq('id', id)
+      if (error) throw error
+      set((st) => ({ appointments: st.appointments.filter((a) => a.id !== id) }))
+      get().showToast('Agendamento removido', 'success')
+      return true
+    } catch {
+      get().showToast('Erro ao remover agendamento', 'error')
+      return false
+    }
+  },
+
+  // ── Preferências / reforçadores (Onda 4) ─────────────────────────────────
+  fetchPreferences: async (patientId) => {
+    try {
+      const { data, error } = await supabase
+        .from('preference_items')
+        .select('id, patient_id, name, category, rank, notes, created_at')
+        .eq('patient_id', patientId)
+        .order('rank', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as PreferenceItem[]
+    } catch (e) {
+      console.warn('Preferências indisponíveis (rode a migration onda45):', e)
+      return []
+    }
+  },
+
+  addPreference: async (patientId, item) => {
+    const uid = get().user?.id
+    if (!uid) return null
+    try {
+      const { data, error } = await supabase.from('preference_items')
+        .insert({ ...item, patient_id: patientId, psychologist_id: uid })
+        .select('id, patient_id, name, category, rank, notes, created_at')
+        .single()
+      if (error) throw error
+      get().showToast('Reforçador adicionado', 'success')
+      return data as PreferenceItem
+    } catch {
+      get().showToast('Erro ao adicionar reforçador', 'error')
+      return null
+    }
+  },
+
+  deletePreference: async (id) => {
+    try {
+      const { error } = await supabase.from('preference_items').delete().eq('id', id)
+      if (error) throw error
+      return true
+    } catch {
+      get().showToast('Erro ao remover reforçador', 'error')
       return false
     }
   },

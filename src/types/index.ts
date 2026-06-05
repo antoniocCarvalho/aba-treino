@@ -91,6 +91,34 @@ export interface Profile {
   avatar_url?: string
 }
 
+// ── Onda 4: Avaliação de Preferência ─────────────────────────────────────────
+export type PreferenceCategory = 'comida' | 'brinquedo' | 'atividade' | 'social' | 'outro'
+
+export interface PreferenceItem {
+  id: string
+  patient_id: string
+  name: string
+  category: PreferenceCategory
+  rank: number // 1–5 (5 = mais preferido)
+  notes: string
+  created_at: string
+}
+
+// ── Onda 5: Agenda de Sessões ─────────────────────────────────────────────────
+export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'missed'
+
+export interface Appointment {
+  id: string
+  patient_id: string | null
+  patient_name: string
+  title: string
+  scheduled_at: string // ISO timestamptz
+  duration_min: number
+  notes: string
+  status: AppointmentStatus
+  created_at: string
+}
+
 export interface Patient {
   id?: string
   name: string

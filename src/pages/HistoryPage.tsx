@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, ReferenceLine } from 'recharts'
 import { Trash2, Pencil, Check, X, CheckCircle2, Users, CloudOff } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useSettingsStore } from '../stores/settingsStore'
@@ -8,6 +8,7 @@ import { dequeue } from '../lib/offline'
 import { movingAverage, rateColor, PHASE_LABEL, formatDuration } from '../lib/aba'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
+import type { AbcEntry } from '../types'
 
 export function HistoryPage() {
   const { sessions, removeSession, showToast, updateSessionNotes, markReviewed, unmarkReviewed, user, profile } = useAppStore()
@@ -18,6 +19,7 @@ export function HistoryPage() {
   const [reviewing, setReviewing] = useState<string | null>(null)
   const [reviewDraft, setReviewDraft] = useState('')
   const [onlyPending, setOnlyPending] = useState(false)
+  const [view, setView] = useState<'sessions' | 'abc'>('sessions')
   const supervisionEnabled = useSettingsStore((s) => s.supervisionEnabled)
   const isSupervisor = supervisionEnabled && profile?.role === 'bcba'
 
@@ -37,6 +39,33 @@ export function HistoryPage() {
   )
 
   const pendingCount = useMemo(() => sessions.filter(s => !s.reviewedAt).length, [sessions])
+
+  // ── Análise Funcional ABC ────────────────────────────────────────────────
+  const abcData = useMemo(() => {
+    const abcSessions = sessions.filter(s =>
+      s.collectionType === 'abc' &&
+      (!fStudent || s.student === fStudent) &&
+      (!fProgram || s.program === fProgram)
+    )
+    const entries: AbcEntry[] = abcSessions.flatMap(s => s.log as unknown as AbcEntry[])
+
+    const antCount: Record<string, number> = {}
+    const consCount: Record<string, number> = {}
+    const intCount: Record<string, number> = { Leve: 0, Moderada: 0, Intensa: 0 }
+
+    entries.forEach(e => {
+      if (e.antecedente)  antCount[e.antecedente]   = (antCount[e.antecedente]   || 0) + 1
+      if (e.consequencia) consCount[e.consequencia]  = (consCount[e.consequencia] || 0) + 1
+      if (e.intensidade)  intCount[e.intensidade]    = (intCount[e.intensidade]   || 0) + 1
+    })
+
+    const topAnt  = Object.entries(antCount).sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([name, total]) => ({ name: name.length > 20 ? name.slice(0, 18) + '…' : name, total }))
+    const topCons = Object.entries(consCount).sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([name, total]) => ({ name: name.length > 20 ? name.slice(0, 18) + '…' : name, total }))
+
+    return { entries, topAnt, topCons, intCount, sessionCount: abcSessions.length }
+  }, [sessions, fStudent, fProgram])
 
   const criterion = filtered[filtered.length - 1]?.criterion ?? 80
   const rates = filtered.map(s => s.rate)
@@ -95,7 +124,24 @@ export function HistoryPage() {
             {programs.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
-        {isSupervisor && pendingCount > 0 && (
+
+        {/* Toggle de visualização */}
+        <div className="flex gap-2 mt-3">
+          {[
+            { key: 'sessions', label: 'Sessões' },
+            { key: 'abc',      label: `Análise ABC${abcData.sessionCount > 0 ? ` (${abcData.sessionCount})` : ''}` },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setView(key as typeof view)}
+              className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors ${view === key ? 'bg-primary text-white border-primary' : 'border-slate-200 text-slate-500 hover:border-primary'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {isSupervisor && pendingCount > 0 && view === 'sessions' && (
           <button
             onClick={() => setOnlyPending(v => !v)}
             className={`mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-all ${onlyPending ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}
@@ -105,6 +151,90 @@ export function HistoryPage() {
           </button>
         )}
       </Card>
+
+      {/* ── Vista: Análise Funcional ABC ─────────────────────────────── */}
+      {view === 'abc' && (
+        abcData.sessionCount === 0 ? (
+          <Card className="p-10 text-center">
+            <div className="text-4xl mb-3">📋</div>
+            <p className="font-semibold text-slate-700">Nenhum registro ABC encontrado</p>
+            <p className="text-sm text-slate-400 mt-1">Registre sessões com tipo de coleta "ABC" para ver a análise funcional aqui.</p>
+          </Card>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              <Card className="p-3 text-center">
+                <p className="text-2xl font-black text-indigo-600">{abcData.sessionCount}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Sessões ABC</p>
+              </Card>
+              <Card className="p-3 text-center">
+                <p className="text-2xl font-black text-amber-500">{abcData.entries.length}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Ocorrências</p>
+              </Card>
+              <Card className="p-3 text-center">
+                <p className="text-2xl font-black text-red-500">{abcData.intCount['Intensa'] ?? 0}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Intensas</p>
+              </Card>
+            </div>
+
+            {abcData.topAnt.length > 0 && (
+              <Card className="p-4">
+                <h3 className="text-sm font-bold text-slate-700 mb-3">Antecedentes mais frequentes</h3>
+                <ResponsiveContainer width="100%" height={abcData.topAnt.length * 36 + 20}>
+                  <BarChart data={abcData.topAnt} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                    <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#475569' }} width={110} />
+                    <Tooltip formatter={(v: any) => [v, 'ocorrências']} contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid #e2e8f0' }} />
+                    <Bar dataKey="total" fill="#5046E4" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            )}
+
+            {abcData.topCons.length > 0 && (
+              <Card className="p-4">
+                <h3 className="text-sm font-bold text-slate-700 mb-1">Consequências mais frequentes</h3>
+                <p className="text-xs text-slate-400 mb-3">Use este dado para inferir a função do comportamento (fuga, atenção, tangível, automático).</p>
+                <ResponsiveContainer width="100%" height={abcData.topCons.length * 36 + 20}>
+                  <BarChart data={abcData.topCons} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                    <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#475569' }} width={110} />
+                    <Tooltip formatter={(v: any) => [v, 'ocorrências']} contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid #e2e8f0' }} />
+                    <Bar dataKey="total" fill="#D97706" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            )}
+
+            <Card className="p-4">
+              <h3 className="text-sm font-bold text-slate-700 mb-3">Distribuição por intensidade</h3>
+              <div className="space-y-2">
+                {(['Leve','Moderada','Intensa'] as const).map(level => {
+                  const count = abcData.intCount[level] ?? 0
+                  const pct = abcData.entries.length ? (count / abcData.entries.length) * 100 : 0
+                  const color = level === 'Leve' ? '#059669' : level === 'Moderada' ? '#D97706' : '#DC2626'
+                  return (
+                    <div key={level}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="font-semibold text-slate-600">{level}</span>
+                        <span className="font-bold" style={{ color }}>{count} ({pct.toFixed(0)}%)</span>
+                      </div>
+                      <div className="bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div className="h-2 rounded-full" style={{ width: `${pct}%`, background: color }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </Card>
+          </>
+        )
+      )}
+
+      {/* ── Vista: Sessões ───────────────────────────────────────────── */}
+      {view === 'sessions' && <>
 
       {/* Chart */}
       {chartData.length > 0 && (
@@ -235,6 +365,7 @@ export function HistoryPage() {
           </div>
         )}
       </Card>
+      </>}
     </div>
   )
 }

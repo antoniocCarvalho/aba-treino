@@ -1,4 +1,4 @@
-import { Users, Plus, BarChart2, FileText } from 'lucide-react'
+import { Users, Plus, BarChart2, FileText, CalendarDays } from 'lucide-react'
 import { cls } from '../../lib/utils'
 
 interface BottomNavProps { tab: string; onTab: (t: string) => void }
@@ -32,7 +32,10 @@ export function BottomNav({ tab, onTab }: BottomNavProps) {
           Relatório
         </button>
 
-        <div className="flex-1" />
+        <button onClick={() => onTab('calendar')} className={cls('flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors', tab === 'calendar' ? 'text-primary' : 'text-slate-400 hover:text-slate-600')}>
+          <CalendarDays size={20} strokeWidth={tab === 'calendar' ? 2.5 : 1.8} />
+          Agenda
+        </button>
       </div>
     </nav>
   )
