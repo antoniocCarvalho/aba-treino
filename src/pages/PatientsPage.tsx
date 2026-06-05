@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X, Share2, ChevronDown, Clock, CalendarDays, Play } from 'lucide-react'
+import { Search, ChevronRight, Plus, Pencil, Trash2, Check, X, Share2, ChevronDown, CalendarDays, Play } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { Card } from '../components/ui/Card'
